@@ -1,0 +1,23 @@
+/build/
+/out/
+*.user
+*.suo
+.vs/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+/external/AgilitySDK/
+/external/DXC/
+/external/WinPixEventRuntime/
+/external/FMOD/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Misc
+*.pdb
+*.ilk
+*.exp
