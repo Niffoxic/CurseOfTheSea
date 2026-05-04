@@ -2,11 +2,12 @@
 #ifndef CURSEOFTHESEA_engine_H
 #define CURSEOFTHESEA_engine_H
 
+#include <memory>
 #include <engine/cots_api.h>
-#include "engine/utils/timer.h"
 
 namespace cots
 {
+    class timer;
     class COTS_API engine
     {
     public:
@@ -17,7 +18,7 @@ namespace cots
         [[nodiscard]] int  execute();
 
     private:
-        timer timer_{};
+        std::shared_ptr<timer> timer_{ nullptr };
     };
 }
 

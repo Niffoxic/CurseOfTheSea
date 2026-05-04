@@ -39,34 +39,32 @@ namespace cots
         template<typename T>
         static void provide(std::shared_ptr<T> service)
         {
-            std::lock_guard lock(mutex_);
+            std::lock_guard lock(mutex());
             const auto type_index = std::type_index(typeid(T));
-            services_[type_index] = std::move(service);
+            services()[type_index] = std::move(service);
         }
 
         // Fallback to the default
         template<typename T>
         static void provide_null(std::shared_ptr<T> service)
         {
-            std::lock_guard lock(mutex_);
+            std::lock_guard lock(mutex());
             const auto type_index = std::type_index(typeid(T));
-            nullServices_[type_index] = std::move(service);
+            null_services()[type_index] = std::move(service);
         }
 
         template<typename T>
-        static T* resolve()
+        static std::shared_ptr<T> resolve()
         {
-            std::lock_guard lock(mutex_);
+            std::lock_guard lock(mutex());
             const auto type_index = std::type_index(typeid(T));
 
-            if (services_.contains(type_index))
-            {
-                return static_cast<T*>(services_[type_index].get());
-            }
-            if (nullServices_.contains(type_index))
-            {
-                return static_cast<T*>(nullServices_[type_index].get());
-            }
+            if (auto it = services().find(type_index); it != services().end())
+                return std::static_pointer_cast<T>(it->second);
+
+            if (auto it = null_services().find(type_index); it != null_services().end())
+                return std::static_pointer_cast<T>(it->second);
+
             COTS_FAIL_MSG("No service registered for type: {}", type_index.name());
             throw std::runtime_error(
                 std::string("ServiceLocator: no service registered for ") + type_index.name());
@@ -75,32 +73,32 @@ namespace cots
         template<typename T>
         static bool has()
         {
-            std::lock_guard lock(mutex_);
+            std::lock_guard lock(mutex());
             const auto type_index = std::type_index(typeid(T));
-            return services_.contains(type_index);
+            return services().contains(type_index);
         }
 
         template<typename T>
         static void remove()
         {
-            std::lock_guard lock(mutex_);
+            std::lock_guard lock(mutex());
             const auto type_index = std::type_index(typeid(T));
-            services_.erase(type_index);
+            services().erase(type_index);
         }
 
         template<typename T>
         static void remove_null()
         {
-            std::lock_guard lock(mutex_);
+            std::lock_guard lock(mutex());
             const auto type_index = std::type_index(typeid(T));
-            nullServices_.erase(type_index);
+            null_services().erase(type_index);
         }
 
         static void clear() //~ dont think ever gonna use it xD
         {
-            std::lock_guard lock(mutex_);
-            services_.clear();
-            nullServices_.clear();
+            std::lock_guard lock(mutex());
+            services().clear();
+            null_services().clear();
         }
 
         template<typename T>
@@ -129,10 +127,30 @@ namespace cots
         };
 
     private:
-        static std::unordered_map<std::type_index, std::shared_ptr<void>> services_;
-        static std::unordered_map<std::type_index, std::shared_ptr<void>> nullServices_;
-        static std::mutex mutex_;
+        static std::unordered_map<std::type_index, std::shared_ptr<void>>& services()
+        {
+            static std::unordered_map<std::type_index, std::shared_ptr<void>> instance;
+            return instance;
+        }
+
+        static std::unordered_map<std::type_index, std::shared_ptr<void>>& null_services()
+        {
+            static std::unordered_map<std::type_index, std::shared_ptr<void>> instance;
+            return instance;
+        }
+
+        static std::mutex& mutex()
+        {
+            static std::mutex instance;
+            return instance;
+        }
     };
 } // namespace cots
+
+#define REGISTER_SERVICE(T)namespace cots{\
+    inline const bool _cots_service_registered_##T = []{\
+    ::cots::service_locator::provide<T>(std::make_shared<T>());\
+    return true;\
+}();}\
 
 #endif //CURSEOFTHESEA_SERVICE_LOCATOR_H

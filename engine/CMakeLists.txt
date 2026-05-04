@@ -1,7 +1,6 @@
 add_library(engine SHARED
         src/engine.cpp
         src/utils/timer.cpp
-        src/service_locator.cpp
 )
 
 target_include_directories(engine
