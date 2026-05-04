@@ -2,11 +2,13 @@
 #ifndef CURSEOFTHESEA_COTS_ASSERT_H
 #define CURSEOFTHESEA_COTS_ASSERT_H
 
+#include <chrono>
+#include <format>
 #include <fstream>
-#include <ctime>
-#include <cstdio>
-#include <cstdlib>
+#include <print>
 #include <string>
+#include <utility>
+#include <cstdlib>
 #include <windows.h>
 #include <intrin.h>
 
@@ -48,25 +50,21 @@ namespace cots::detail
 {
     inline std::string current_timestamp()
     {
-        const auto now = std::time(nullptr);
-        std::tm tm_buf;
-        localtime_s(&tm_buf, &now);
-        char buf[32];
-        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
-        return buf;
+        const auto now = std::chrono::floor<std::chrono::seconds>(
+            std::chrono::system_clock::now());
+        return std::format("{:%Y-%m-%d %H:%M:%S}",
+            std::chrono::current_zone()->to_local(now));
     }
 
     inline std::string build_line(const char* expr, const char* file, const int line,
                                   const char* func, const char* msg)
     {
-        char buf[2048];
-        std::snprintf(buf, sizeof(buf),
-            "%s [ASSERT] %s:%d in %s(): expression `%s` failed%s%s",
-            current_timestamp().c_str(),
+        return std::format(
+            "{} [ASSERT] {}:{} in {}(): expression `{}` failed{}{}",
+            current_timestamp(),
             file, line, func, expr,
             (msg && msg[0]) ? " — " : "",
             (msg && msg[0]) ? msg   : "");
-        return buf;
     }
 
     [[noreturn]] inline void handle_failure(const char* expr, const char* file,
@@ -77,17 +75,15 @@ namespace cots::detail
 
         {
             std::ofstream f("error.log", std::ios::app);
-            if (f.is_open()) f << text << std::endl;
+            if (f.is_open()) std::println(f, "{}", text);
         }
 
-        std::fputs(text.c_str(), stderr);
-        std::fputc('\n', stderr);
+        std::println(stderr, "{}", text);
         std::fflush(stderr);
 
-        char clickable[2048];
-        std::snprintf(clickable, sizeof(clickable),
-                      "%s(%d): %s\n", file, line, text.c_str());
-        OutputDebugStringA(clickable);
+        const std::string clickable =
+            std::format("{}({}): {}\n", file, line, text);
+        OutputDebugStringA(clickable.c_str());
 
     #if COTS_HAS_CRTDBG
         const int report = _CrtDbgReport(
@@ -101,25 +97,44 @@ namespace cots::detail
 
         std::abort();
     }
+
+    template<typename... Args>
+    [[noreturn]] inline void handle_failure_fmt(
+        const char* expr, const char* file, const int line, const char* func,
+        std::format_string<Args...> fmt, Args&&... args)
+    {
+        const std::string msg = std::format(fmt, std::forward<Args>(args)...);
+        handle_failure(expr, file, line, func, msg.c_str());
+    }
 } // namespace cots::detail
 
-#define COTS_INTERNAL_FAIL(expr, msg) do {\
-if (!(expr)){\
-::cots::detail::handle_failure(\
-#expr, __FILE__, __LINE__, __func__, msg);\
-}}while(0)
+#define COTS_INTERNAL_FAIL(expr) do {\
+    if (!(expr)){\
+        ::cots::detail::handle_failure(\
+            #expr, __FILE__, __LINE__, __func__, nullptr);\
+    }}while(0)
+
+#define COTS_INTERNAL_FAIL_FMT(expr, ...) do {\
+    if (!(expr)){\
+        ::cots::detail::handle_failure_fmt(\
+            #expr, __FILE__, __LINE__, __func__, __VA_ARGS__);\
+    }}while(0)
 
 //~ always on
-#define COTS_VERIFY(expr)          COTS_INTERNAL_FAIL(expr, nullptr)
-#define COTS_VERIFY_MSG(expr, msg) COTS_INTERNAL_FAIL(expr, msg)
+#define COTS_VERIFY(expr)              COTS_INTERNAL_FAIL(expr)
+#define COTS_VERIFY_MSG(expr, ...)     COTS_INTERNAL_FAIL_FMT(expr, __VA_ARGS__)
 
 //~ only on debug or tracer
 #if defined(DEBUG) || defined(_DEBUG) || defined(TRACER)
-#  define COTS_ASSERT(expr)          COTS_INTERNAL_FAIL(expr, nullptr)
-#  define COTS_ASSERT_MSG(expr, msg) COTS_INTERNAL_FAIL(expr, msg)
+#  define COTS_ASSERT(expr)            COTS_INTERNAL_FAIL(expr)
+#  define COTS_ASSERT_MSG(expr, ...)   COTS_INTERNAL_FAIL_FMT(expr, __VA_ARGS__)
+#define COTS_FAIL_MSG(...) \
+::cots::detail::handle_failure_fmt(\
+"<unconditional fail>", __FILE__, __LINE__, __func__, __VA_ARGS__)
 #else
-#  define COTS_ASSERT(expr)          ((void)0)
-#  define COTS_ASSERT_MSG(expr, msg) ((void)0)
+# define COTS_ASSERT(expr)            ((void)0)
+# define COTS_ASSERT_MSG(expr, ...)   ((void)0)
+# define COTS_FAIL_MSG(...) ((void)0)
 #endif
 
 #endif //CURSEOFTHESEA_COTS_ASSERT_H
