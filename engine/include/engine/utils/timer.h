@@ -50,4 +50,3 @@ namespace cots
 }
 
 #endif //CURSEOFTHESEA_TIMER_H
-

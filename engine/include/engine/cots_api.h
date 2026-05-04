@@ -33,7 +33,6 @@
 #  define COTS_DEPRECATED_NO_EXPORT COTS_NO_EXPORT COTS_DEPRECATED
 #endif
 
-/* NOLINTNEXTLINE(readability-avoid-unconditional-preprocessor-if) */
 #if 0 /* DEFINE_NO_DEPRECATED */
 #  ifndef COTS_NO_DEPRECATED
 #    define COTS_NO_DEPRECATED

@@ -2,6 +2,8 @@
 #include "engine/engine.h"
 #include <spdlog/spdlog.h>
 
+#include "engine/core/cots_assert.h"
+
 cots::engine::engine() {}
 
 cots::engine::~engine() {}
