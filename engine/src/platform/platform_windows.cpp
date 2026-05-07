@@ -1,4 +1,7 @@
 #include "engine/platform/platform_windows.h"
+
+#include <filesystem>
+
 #include "engine/service_locator.h"
 #include "spdlog/spdlog.h"
 
@@ -64,6 +67,17 @@ namespace cots::platform
         return status_ == status::Quit;
     }
 
+    HICON windows::load_icon(const std::wstring &path, const int size) const noexcept
+    {
+        return static_cast<HICON>(LoadImageW(
+              nullptr,
+              path.c_str(),
+              IMAGE_ICON,
+              size, size,
+              LR_LOADFROMFILE | LR_DEFAULTCOLOR
+          ));
+    }
+
     void windows::create_window(const initialize_info &info)
     {
         WNDCLASSEXW window_class{};
@@ -74,8 +88,16 @@ namespace cots::platform
         window_class.hCursor       = LoadCursor(nullptr, IDC_ARROW);
         window_class.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
         window_class.lpszClassName = CLASS_NAME;
-        window_class.hIcon         = LoadIcon(nullptr, IDI_APPLICATION);
-        window_class.hIconSm       = LoadIcon(nullptr, IDI_APPLICATION);
+
+        window_class.hIcon   = load_icon(info.icon_path, 32);
+        window_class.hIconSm = load_icon(info.icon_path, GetSystemMetrics(SM_CXSMICON));
+
+        if (!window_class.hIcon)
+        {
+            window_class.hIcon   = LoadIconW(nullptr, IDI_APPLICATION);
+            window_class.hIconSm = window_class.hIcon;
+        }
+
         window_class.cbWndExtra    = 0;
         window_class.cbClsExtra    = 0;
         window_class.lpszMenuName  = nullptr;
@@ -88,6 +110,7 @@ namespace cots::platform
 
         constexpr DWORD style    = WS_OVERLAPPEDWINDOW;
         constexpr DWORD ex_style = WS_EX_APPWINDOW;
+
         RECT rt{};
         rt.left   = 0;
         rt.top    = 0;

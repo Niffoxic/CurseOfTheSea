@@ -7,6 +7,10 @@
 #include <type_traits>
 #include <windows.h>
 
+// TODO: Add Subsystem Interface and Subsystem manager
+// TODO: Add Tickable Interface
+//
+
 namespace cots::platform
 {
     enum class screen_state: std::uint8_t
@@ -56,17 +60,17 @@ namespace cots::platform
         return static_cast<screen_state>(static_cast<T>(left) ^ static_cast<T>(right));
     }
 
-    constexpr screen_state& operator|=(screen_state& left, screen_state right) noexcept
+    constexpr screen_state& operator|=(screen_state& left, const screen_state right) noexcept
     {
         return left = left | right;
     }
 
-    constexpr screen_state& operator&=(screen_state& left, screen_state right) noexcept
+    constexpr screen_state& operator&=(screen_state& left, const screen_state right) noexcept
     {
         return left = left & right;
     }
 
-    constexpr screen_state& operator^=(screen_state& left, screen_state right) noexcept
+    constexpr screen_state& operator^=(screen_state& left, const screen_state right) noexcept
     {
         return left = left ^ right;
     }
@@ -106,6 +110,7 @@ namespace cots::platform
     {
         size<int>    window_size{};
         std::wstring window_title{L"COTS Engine" };
+        std::wstring icon_path   {L"assets/icons/app.ico" };
     };
 
     class windows
@@ -139,6 +144,9 @@ namespace cots::platform
         {
             return window_size_.as<T>();
         }
+
+        //~ helpers
+        [[nodiscard]] HICON load_icon(const std::wstring& path, int size) const noexcept;
 
     private:
         void create_window(const initialize_info& info);
