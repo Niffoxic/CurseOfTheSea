@@ -4,6 +4,7 @@
 
 #include "engine/core/cots_assert.h"
 #include "engine/registry.h"
+#include "engine/platform/platform_windows.h"
 
 cots::engine::engine() {}
 
@@ -11,29 +12,35 @@ cots::engine::~engine() {}
 
 bool cots::engine::init()
 {
-    timer_ = service_locator::resolve<timer>();
+    timer_   = service_locator::resolve<utils::timer>();
+    windows_ = service_locator::resolve<platform::windows>();
+
+    platform::initialize_info window_info{};
+    window_info.window_size = {1280, 720};
+    window_info.window_title = L"Curse of the sea";
+
+    COTS_ASSERT_MSG(windows_ != nullptr, "Failed to initialize windows");
+    if (not windows_->initialize(window_info))
+    {
+        return false;
+    }
+
     return true;
 }
 
 int cots::engine::execute()
 {
     timer_->reset();
-    float delta_time = 0.f;
-    int fps = 0;
 
     timer_->set_target_frame_ps(160);
     while (true)
     {
         timer_->step();
-        ++fps;
-        delta_time += timer_->delta_time();
-        if (delta_time > 1.f)
+        windows_->begin_frame(timer_->delta_time());
+        if (windows_->should_close())
         {
-            delta_time = 0.f;
-            spdlog::info("FPS: {}", fps);
-            fps = 0;
+            return 0;
         }
-        if (timer_->elapsed_time() > 10.f) break;
     }
     return 0;
 }

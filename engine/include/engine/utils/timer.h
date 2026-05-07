@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-namespace cots
+namespace cots::utils
 {
     class timer
     {
@@ -47,6 +47,6 @@ namespace cots
         bool paused_   { false };
         ns target_frame_{ ns(static_cast<long>(1'000'000'000.0f / default_fps))};
     };
-}
+} // namespace cots::utils
 
 #endif //CURSEOFTHESEA_TIMER_H

@@ -4,7 +4,16 @@
 
 #include "service_locator.h"
 #include "utils/timer.h"
+#include "platform/platform_windows.h"
 
-REGISTER_SERVICE(timer);
+namespace cots::utils
+{
+    REGISTER_SERVICE(timer);
+}
+
+namespace cots::platform
+{
+    REGISTER_SERVICE(windows);
+}
 
 #endif //CURSEOFTHESEA_REGISTRY_H
