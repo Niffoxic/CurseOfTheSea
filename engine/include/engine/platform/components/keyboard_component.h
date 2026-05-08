@@ -78,11 +78,11 @@ namespace cots::platform
         keyboard_component& operator=(const keyboard_component&) = delete;
         keyboard_component& operator=(keyboard_component&&)      = default;
 
+        [[nodiscard]] bool initialize(const interface::input_initialize_info &info) override;
+
+        void deinitialize() override;
         void begin_update() override;
         void end_update  () override;
-
-        [[nodiscard]] bool initialize  (const interface::input_initialize_info &info) override;
-                      void deinitialize() override;
 
         [[nodiscard]] bool poll_messages(
             UINT message, WPARAM w_param,
