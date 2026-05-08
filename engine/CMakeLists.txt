@@ -7,6 +7,8 @@ add_executable(engine
         src/system/service_registry.cpp
         src/system/log_services.cpp
         src/system/window_services.cpp
+        src/platform/components/keyboard_component.cpp
+        src/platform/components/mouse_component.cpp
 )
 
 cots_apply_compile_flags(engine)

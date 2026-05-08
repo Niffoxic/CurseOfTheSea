@@ -1,21 +1,13 @@
 // Created by Niffoxic (Harsh Dubey)
 #include "engine/engine.h"
 #include "engine/core/cots_assert.h"
-#include "../include/engine/system/game_host.h"
+#include "engine/system/game_host.h"
+#include "engine/system/service_registry.h"
 
 #include <cots/engine_services.h>
 #include <cots/cots_config.h>
 
 #include <spdlog/spdlog.h>
-
-#include "engine/system/service_registry.h"
-
-namespace //~ tests
-{
-    void log_info (const char* msg) { spdlog::info ("[game] {}", msg); }
-    void log_warn (const char* msg) { spdlog::warn ("[game] {}", msg); }
-    void log_error(const char* msg) { spdlog::error("[game] {}", msg); }
-}
 
 int main()
 {
