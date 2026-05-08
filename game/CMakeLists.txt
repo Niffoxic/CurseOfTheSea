@@ -1,6 +1,7 @@
 file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
 add_library(game SHARED ${GAME_SOURCES})
+cots_apply_compile_flags(game)
 
 target_link_libraries(game PRIVATE cots_shared)
 

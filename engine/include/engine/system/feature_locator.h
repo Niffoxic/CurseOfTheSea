@@ -7,12 +7,12 @@
 #include <stdexcept>
 #include <typeindex>
 #include <unordered_map>
-#include "core/cots_assert.h"
+#include "../core/cots_assert.h"
 
-namespace cots
+namespace cots::feature
 {
     /**
-     * @class service_locator
+     * @class locator
      *
      * @brief A class that implements the Service Locator pattern to manage dependencies and provide access to various services.
      *
@@ -32,7 +32,7 @@ namespace cots
      * Note:
      * - The service_locator pattern can lead to tight coupling and should be used sparingly in large-scale, maintainable systems.
      */
-    class service_locator
+    class locator
     {
     public:
         //~ Register a service instance for type T
@@ -107,16 +107,16 @@ namespace cots
         public:
             explicit scope(std::shared_ptr<T> service)
             {
-                previous_ = service_locator::has<T>() ? service_locator::resolve<T>() : nullptr;
-                service_locator::provide<T>(std::move(service));
+                previous_ = locator::has<T>() ? locator::resolve<T>() : nullptr;
+                locator::provide<T>(std::move(service));
             }
 
             ~scope()
             {
                 if (previous_)
-                    service_locator::provide<T>(std::move(previous_));
+                    locator::provide<T>(std::move(previous_));
                 else
-                    service_locator::remove<T>();
+                    locator::remove<T>();
             }
 
             scope           (const scope &) = delete;
@@ -147,9 +147,9 @@ namespace cots
     };
 } // namespace cots
 
-#define REGISTER_SERVICE(T)namespace cots{\
+#define REGISTER_FEATURE(T)namespace cots{\
     inline const bool _cots_service_registered_##T = []{\
-    ::cots::service_locator::provide<T>(std::make_shared<T>());\
+    ::cots::feature::locator::provide<T>(std::make_shared<T>());\
     return true;\
 }();}\
 

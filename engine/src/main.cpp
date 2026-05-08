@@ -1,10 +1,14 @@
 // Created by Niffoxic (Harsh Dubey)
 #include "engine/engine.h"
 #include "engine/core/cots_assert.h"
-#include "game_host.h"
+#include "../include/engine/system/game_host.h"
 
 #include <cots/engine_services.h>
+#include <cots/cots_config.h>
+
 #include <spdlog/spdlog.h>
+
+#include "engine/system/service_registry.h"
 
 namespace //~ tests
 {
@@ -15,7 +19,10 @@ namespace //~ tests
 
 int main()
 {
+#if defined(COTS_DEBUG_RUNTIME)
     cots::init_debug_runtime();
+#endif
+
     cots::engine engine{};
 
     if (not engine.init())
@@ -25,9 +32,7 @@ int main()
     }
 
     cots::module::services services{};
-    services.log_info  = &log_info;
-    services.log_warn  = &log_warn;
-    services.log_error = &log_error;
+    cots::services::install_all(services);
 
     cots::game::host host{};
     if (not host.initialize(services))
@@ -41,11 +46,13 @@ int main()
 
     while (not engine.should_close())
     {
+#if defined(COTS_HOT_RELOAD)
         if (++reload_check_counter >= 10) //~ cheap poll per 10 frames
         {
             reload_check_counter = 0u;
-            host.pool_for_reload();
+            host.poll_for_reload();
         }
+#endif
         engine.tick();
         host.update(engine.delta_time());
     }

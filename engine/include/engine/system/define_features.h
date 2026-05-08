@@ -2,18 +2,18 @@
 #ifndef CURSEOFTHESEA_REGISTRY_H
 #define CURSEOFTHESEA_REGISTRY_H
 
-#include "service_locator.h"
-#include "utils/timer.h"
-#include "platform/platform_windows.h"
+#include "feature_locator.h"
+#include "../utils/timer.h"
+#include "../platform/platform_windows.h"
 
 namespace cots::utils
 {
-    REGISTER_SERVICE(timer);
+    REGISTER_FEATURE(timer);
 }
 
 namespace cots::platform
 {
-    REGISTER_SERVICE(windows);
+    REGISTER_FEATURE(windows);
 }
 
 #endif //CURSEOFTHESEA_REGISTRY_H

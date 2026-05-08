@@ -1,5 +1,5 @@
 // Created by Niffoxic (Harsh Dubey)
-#include "game_host.h"
+#include "../../include/engine/system/game_host.h"
 #include "engine/core/cots_assert.h"
 #include <spdlog/spdlog.h>
 
@@ -39,7 +39,7 @@ namespace cots::game
         );
 
         memory_.transient = VirtualAlloc(
-            nullptr, memory_.permanent_size,
+            nullptr, memory_.transient_size,
             MEM_RESERVE | MEM_COMMIT,
             PAGE_READWRITE
         );
@@ -84,7 +84,7 @@ namespace cots::game
         }
     }
 
-    bool host::pool_for_reload()
+    bool host::poll_for_reload()
     {
         const auto now = get_file_write_time(record_.dll_source_path_.c_str());
 

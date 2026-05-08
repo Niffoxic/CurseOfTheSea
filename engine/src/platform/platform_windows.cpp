@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-#include "engine/service_locator.h"
+#include "../../include/engine/system/feature_locator.h"
 #include "spdlog/spdlog.h"
 
 namespace cots::platform

@@ -31,7 +31,7 @@ namespace cots::game
                       void deinitialize(); // free mem and call notify game dll
 
         // checks if the game dll is changed
-        bool pool_for_reload();
+        bool poll_for_reload();
         void update(float dt);
 
     private:

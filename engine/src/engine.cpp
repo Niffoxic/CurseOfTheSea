@@ -3,7 +3,7 @@
 #include <spdlog/spdlog.h>
 
 #include "engine/core/cots_assert.h"
-#include "engine/registry.h"
+#include "../include/engine/system/define_features.h"
 #include "engine/platform/platform_windows.h"
 
 cots::engine::engine() = default;
@@ -12,8 +12,8 @@ cots::engine::~engine() = default;
 
 bool cots::engine::init()
 {
-    timer_   = service_locator::resolve<utils::timer>();
-    windows_ = service_locator::resolve<platform::windows>();
+    timer_   = feature::locator::resolve<utils::timer>();
+    windows_ = feature::locator::resolve<platform::windows>();
 
     platform::initialize_info window_info{};
     window_info.window_size = {1280, 720};

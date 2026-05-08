@@ -1,10 +1,15 @@
 add_executable(engine
         src/main.cpp
         src/engine.cpp
-        src/game_host.cpp
         src/utils/timer.cpp
         src/platform/platform_windows.cpp
+        src/system/game_host.cpp
+        src/system/service_registry.cpp
+        src/system/log_services.cpp
+        src/system/window_services.cpp
 )
+
+cots_apply_compile_flags(engine)
 
 target_include_directories(engine PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include

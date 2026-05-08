@@ -4,13 +4,28 @@
 
 namespace cots::module
 {
+    struct log_services
+    {
+        void (*info) (const char* msg);
+        void (*warn) (const char* msg);
+        void (*error)(const char* msg);
+    };
+
+    struct window_services
+    {
+        void (*get_size)(int* width, int* height);
+    };
+
+    struct input_services
+    {
+
+    };
+
     struct services
     {
-        void (*log_info) (const char* msg);
-        void (*log_warn) (const char* msg);
-        void (*log_error)(const char* msg);
-
-        //~ TODO: add service locator
+        log_services    log;
+        window_services window;
+        input_services  input;
     };
 } // namespace cots::module
 
