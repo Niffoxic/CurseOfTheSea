@@ -9,7 +9,7 @@ namespace cots::interface
 {
     struct input_initialize_info
     {
-        HWND window_handle;
+        HWND window_handle{ nullptr };
     };
 
     class interface_input_component: public interface_tickable

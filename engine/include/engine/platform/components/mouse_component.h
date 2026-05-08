@@ -40,8 +40,9 @@ namespace cots::platform
         //~ lifecycle
         [[nodiscard]] bool initialize(const interface::input_initialize_info& info) override;
 
+        void begin_update(float dt) override;
+
         void deinitialize() override;
-        void begin_update() override;
         void end_update  () override;
 
         [[nodiscard]] bool poll_messages(

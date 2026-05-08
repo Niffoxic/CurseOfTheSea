@@ -39,7 +39,7 @@ namespace cots::platform
         hwnd_ = nullptr;
     }
 
-    void mouse_component::begin_update()
+    void mouse_component::begin_update(float dt)
     {}
 
     void mouse_component::end_update()

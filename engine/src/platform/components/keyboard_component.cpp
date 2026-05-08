@@ -3,7 +3,7 @@
 
 #include <algorithm>
 
-void cots::platform::keyboard_component::begin_update()
+void cots::platform::keyboard_component::begin_update(float delta_time)
 {
     //~ not needed
 }

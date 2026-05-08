@@ -10,8 +10,8 @@ namespace cots::interface
         virtual ~interface_tickable() = default;
 
         // called before end update after calling begin on all tickable
-        virtual void begin_update() = 0;
-        virtual void end_update  () = 0;
+        virtual void begin_update(float dt) = 0;
+        virtual void end_update  ()         = 0;
     };
 } // namespace cots::interface
 

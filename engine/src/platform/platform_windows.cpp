@@ -15,6 +15,23 @@ namespace cots::platform
     bool windows::initialize(const initialize_info &info)
     {
         create_window(info);
+        COTS_ASSERT_MSG(window_handle_ != nullptr, "Failed to create window");
+
+        interface::input_initialize_info input_info{};
+        input_info.window_handle = window_handle_;
+
+        if (not keyboard.initialize(input_info))
+        {
+            spdlog::error("Failed to initialize keyboard");
+            return false;
+        }
+
+        if (not mouse.initialize(input_info))
+        {
+            spdlog::error("Failed to initialize mouse");
+            return false;
+        }
+
         return true;
     }
 
@@ -26,8 +43,9 @@ namespace cots::platform
         }
     }
 
-    void windows::begin_frame(float delta_time)
+    void windows::begin_update(float delta_time)
     {
+        //~ poll messages
         MSG msg{};
 
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
@@ -35,11 +53,15 @@ namespace cots::platform
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+
+        keyboard.begin_update();
+        mouse   .begin_update();
     }
 
-    void windows::end_frame()
+    void windows::end_update()
     {
-
+        keyboard.end_update();
+        mouse   .end_update();
     }
 
     HWND windows::get_window_handle() const noexcept

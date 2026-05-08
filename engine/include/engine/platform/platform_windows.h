@@ -7,6 +7,9 @@
 #include <type_traits>
 #include <windows.h>
 
+#include "components/keyboard_component.h"
+#include "components/mouse_component.h"
+
 // TODO: Add Subsystem Interface and Subsystem manager
 // TODO: Add Tickable Interface
 
@@ -112,11 +115,11 @@ namespace cots::platform
         std::wstring icon_path   {L"assets/icons/app.ico" };
     };
 
-    class windows
+    class windows final: public interface::interface_tickable
     {
     public:
          windows() = default;
-        ~windows();
+        ~windows() override;
 
         windows(const windows&) = delete;
         windows(windows&&)      = delete;
@@ -127,8 +130,12 @@ namespace cots::platform
         [[nodiscard]] bool initialize(const initialize_info& info);
                       void deinitialize() noexcept;
 
-        void begin_frame(float delta_time);
-        void end_frame  ();
+        void begin_update(float delta_time) override;
+        void end_update  () override;
+
+        //~ components
+        keyboard_component keyboard{};
+        mouse_component    mouse   {};
 
         [[nodiscard]] HWND      get_window_handle() const noexcept;
         [[nodiscard]] HINSTANCE get_instance     () const noexcept;
@@ -154,7 +161,7 @@ namespace cots::platform
         static LRESULT CALLBACK window_proc_setup(HWND hwnd, UINT message, WPARAM w_param, LPARAM l_param);
         static LRESULT CALLBACK window_proc_thunk(HWND hwnd, UINT message, WPARAM w_param, LPARAM l_param);
 
-    private:
+     private:
         static constexpr auto CLASS_NAME = L"COTS";
 
         size<int>    window_size_    {};
