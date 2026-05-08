@@ -4,10 +4,15 @@
 
 #include <memory>
 
+#include "core/engine_config.h"
+#include "core/framework/interface/subsystem.h"
+#include "core/framework/interface/tickable.h"
+#include "core/framework/dependency_builder.h"
+
 namespace cots
 {
-    namespace platform  { class windows; }
-    namespace utils     { class timer;   }
+    namespace platform{ class windows; }
+    namespace utils   { class timer;   }
 
     class engine
     {
@@ -20,9 +25,23 @@ namespace cots
 
         [[nodiscard]] bool  should_close() const noexcept;
         [[nodiscard]] float delta_time  () const noexcept;
+
     private:
-        std::shared_ptr<utils::timer>      timer_   { nullptr };
-        std::shared_ptr<platform::windows> windows_ { nullptr };
+        void initialize_features();
+        void regulate_subsystems();
+        void regulate_tickable  ();
+
+        //~ processes
+        void update_tickable();
+
+    private:
+        config::manager config_manager_{};
+
+        std::shared_ptr<utils::timer>      timer_  { nullptr };
+        std::shared_ptr<platform::windows> windows_{ nullptr };
+
+        utils::dependency_scheduler<interface::subsystem> subsystem_scheduler_;
+        utils::dependency_scheduler<interface::tickable>  tickable_scheduler_;
     };
 }
 

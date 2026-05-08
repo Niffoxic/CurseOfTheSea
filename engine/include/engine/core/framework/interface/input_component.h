@@ -3,7 +3,7 @@
 #define CURSEOFTHESEA_INTERFACE_INPUT_COMPONENT_H
 
 #include <windows.h>
-#include "interface_tickable.h"
+#include "tickable.h"
 
 namespace cots::interface
 {
@@ -12,7 +12,7 @@ namespace cots::interface
         HWND window_handle{ nullptr };
     };
 
-    class interface_input_component: public interface_tickable
+    class input_component: public tickable
     {
     public:
         [[nodiscard]] virtual bool initialize  (const input_initialize_info& info)  = 0;

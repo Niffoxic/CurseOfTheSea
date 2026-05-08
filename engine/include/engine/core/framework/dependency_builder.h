@@ -3,6 +3,7 @@
 #define CURSEOFTHESEA_DEPENDENCY_SCHEDULER_H
 
 #include <unordered_set>
+#include <unordered_map>
 #include <vector>
 #include <typeindex>
 #include <memory>
@@ -10,7 +11,8 @@
 #include <stdexcept>
 #include <iterator>
 #include <type_traits>
-#include <unordered_map>
+#include <functional>
+#include <cstddef>
 
 namespace cots::utils
 {
@@ -42,65 +44,86 @@ namespace cots::utils
         dependency_scheduler           (const dependency_scheduler&) = delete;
         dependency_scheduler& operator=(const dependency_scheduler&) = delete;
 
+        // ---- registration ----
+
+        // Primary: register by shared_ptr. Does NOT take ownership; stores the raw pointer.
         template<typename U>
-        void register_type(U& instance)
+        void register_type(const std::shared_ptr<U>& instance)
         {
             static_assert(std::is_base_of_v<T, U>, "U must be derived from T");
+            if (!instance) throw std::runtime_error("register_type: null shared_ptr");
+
             const std::type_index id{ typeid(U) };
+            if (nodes_.contains(id)) return;          // already registered, skip
 
-            //~ already registered skipping
-            if (nodes_.contains(id))
-            {
-                return;
-            }
-
-            nodes_[id]  = node{ &instance, {} };
-            dirty_      = true;
+            nodes_[id] = node{ instance.get(), {} };
+            dirty_     = true;
         }
 
-        template<typename Depender, typename...DependsUpon>
+        // Convenience: accept std::ref(some_shared_ptr).
+        template<typename U>
+        void register_type(std::reference_wrapper<std::shared_ptr<U>> ref)
+        {
+            register_type(ref.get());
+        }
+        template<typename U>
+        void register_type(std::reference_wrapper<const std::shared_ptr<U>> ref)
+        {
+            register_type(ref.get());
+        }
+
+        // ---- dependencies ----
+
+        // Compile-time:  add_dependency<game, renderer, physics>();
+        template<typename Depender, typename... DependsUpon>
         void add_dependency()
         {
             static_assert(std::is_base_of_v<T, Depender>, "Depender must be derived from T");
-            static_assert((std::is_base_of_v<T, DependsUpon> && ...), "DependsUpon must be derived from T");
+            static_assert((std::is_base_of_v<T, DependsUpon> && ...),
+                          "Each DependsUpon must be derived from T");
 
             node& n = require_node(typeid(Depender));
-            (add_single_dep(n, typeid(Depender), typeid(DependsUpon)),...);
+            (add_single_dep(n, typeid(Depender), typeid(DependsUpon)), ...);
             dirty_ = true;
         }
 
-        template<typename...DependsUpon>
-        void add_dependency(T& depender, DependsUpon&&...deps)
+        // Runtime via shared_ptrs:  add_dependency(game_, renderer_, physics_);
+        template<typename U, typename... Us>
+        void add_dependency(const std::shared_ptr<U>& depender,
+                            const std::shared_ptr<Us>&... deps)
         {
-            node& n = require_node(typeid(T));
-            (add_single_dep(n, typeid(depender), typeid(deps)),...);
+            static_assert(std::is_base_of_v<T, U>);
+            static_assert((std::is_base_of_v<T, Us> && ...));
+
+            node& n = require_node(typeid(U));
+            (add_single_dep(n, typeid(U), typeid(Us)), ...);
             dirty_ = true;
         }
+
+        // ---- iteration ----
 
         size_type size () const noexcept { return nodes_.size(); }
         bool      empty() const noexcept { return nodes_.empty(); }
 
-        iterator begin() noexcept { ensure_sorted(); return sorted_.get(); }
-        iterator end  () noexcept { ensure_sorted(); return sorted_.get() + sorted_size_; }
+        iterator begin() const { ensure_sorted(); return sorted_.get(); }
+        iterator end  () const { ensure_sorted(); return sorted_.get() + sorted_size_; }
 
         reverse_iterator rbegin() const { return reverse_iterator{ end()   }; }
         reverse_iterator rend()   const { return reverse_iterator{ begin() }; }
 
     private:
-        node& require_node(const std::type_index& id) const
+        node& require_node(const std::type_index& id)
         {
             const auto it = nodes_.find(id);
             if (it == nodes_.end())
-            {
                 throw std::runtime_error("No such type registered");
-            }
             return it->second;
         }
 
-        void add_single_dep(node& n, const std::type_index self, const std::type_index dep)
+        void add_single_dep(node& n, std::type_index self, std::type_index dep)
         {
-            if (not nodes_.contains(dep)) throw std::runtime_error("No such type registered");
-            if (dep == self)              throw std::runtime_error("Self-dependency not allowed");
+            if (!nodes_.contains(dep)) throw std::runtime_error("No such type registered");
+            if (dep == self)           throw std::runtime_error("Self-dependency not allowed");
             n.dependencies.insert(dep);
         }
 

@@ -10,8 +10,8 @@
 #include "components/keyboard_component.h"
 #include "components/mouse_component.h"
 
-// TODO: Add Subsystem Interface and Subsystem manager
-// TODO: Add Tickable Interface
+#include "engine/core/framework/interface/subsystem.h"
+#include "engine/core/engine_config.h"
 
 namespace cots::platform
 {
@@ -84,38 +84,7 @@ namespace cots::platform
         return (state & check_with) == check_with;
     }
 
-    template<typename T>
-    requires std::is_arithmetic_v<T>
-    struct size
-    {
-        T width { T(1280) };
-        T height{ T(720) };
-
-        size() = default;
-        size(T w, T h) : width(w), height(h)
-        {}
-
-        [[nodiscard]] T get_aspect_ratio() const noexcept
-        {
-            return width / height;
-        }
-
-        template<typename Type>
-        requires std::is_arithmetic_v<Type>
-        [[nodiscard]] auto as() const noexcept -> size<Type>
-        {
-            return size<Type>(Type(width), Type(height));
-        }
-    };
-
-    struct initialize_info
-    {
-        size<int>    window_size{};
-        std::wstring window_title{L"COTS Engine" };
-        std::wstring icon_path   {L"assets/icons/app.ico" };
-    };
-
-    class windows final: public interface::interface_tickable
+    class windows final: public interface::subsystem ,public interface::tickable
     {
     public:
          windows() = default;
@@ -127,8 +96,8 @@ namespace cots::platform
         windows& operator=(const windows&) = delete;
         windows& operator=(windows&&)      = delete;
 
-        [[nodiscard]] bool initialize(const initialize_info& info);
-                      void deinitialize() noexcept;
+        [[nodiscard]] bool initialize  () override;
+                      void deinitialize() noexcept override;
 
         void begin_update(float delta_time) override;
         void end_update  () override;
@@ -146,7 +115,7 @@ namespace cots::platform
 
         template<typename T=int>
         requires std::is_integral_v<T>
-        [[nodiscard]] size<T> get_window_size() const noexcept
+        [[nodiscard]] config::size<T> get_window_size() const noexcept
         {
             return window_size_.as<T>();
         }
@@ -155,7 +124,7 @@ namespace cots::platform
         [[nodiscard]] HICON load_icon(const std::wstring& path, int size) const noexcept;
 
     private:
-        void create_window(const initialize_info& info);
+        void create_window(const config::windows* info);
 
                LRESULT          handle_message   (HWND hwnd, UINT message, WPARAM w_param, LPARAM l_param);
         static LRESULT CALLBACK window_proc_setup(HWND hwnd, UINT message, WPARAM w_param, LPARAM l_param);
@@ -164,11 +133,11 @@ namespace cots::platform
      private:
         static constexpr auto CLASS_NAME = L"COTS";
 
-        size<int>    window_size_    {};
-        HWND         window_handle_  { nullptr };
-        HINSTANCE    window_instance_{ nullptr };
-        screen_state screen_state_   { screen_state::none };
-        status       status_         { status::Running };
+        config::size<int>   window_size_    {};
+        HWND                window_handle_  { nullptr };
+        HINSTANCE           window_instance_{ nullptr };
+        screen_state        screen_state_   { screen_state::none };
+        status              status_         { status::Running };
     };
 } // namespace cots
 

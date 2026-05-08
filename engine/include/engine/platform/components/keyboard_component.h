@@ -6,7 +6,7 @@
 #include <initializer_list>
 #include <string>
 #include <type_traits>
-#include "engine/core/framework/interface/interface_input_component.h"
+#include "engine/core/framework/interface/input_component.h"
 
 namespace cots::platform
 {
@@ -64,7 +64,7 @@ namespace cots::platform
         return (state & check_with) == check_with;
     }
 
-    class keyboard_component final: public interface::interface_input_component
+    class keyboard_component final: public interface::input_component
     {
     public:
         static constexpr std::size_t key_count = 256;

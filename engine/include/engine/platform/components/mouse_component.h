@@ -5,7 +5,7 @@
 #include <bitset>
 #include <vector>
 
-#include "engine/core/framework/interface/interface_input_component.h"
+#include "engine/core/framework/interface/input_component.h"
 
 namespace cots::platform
 {
@@ -22,7 +22,7 @@ namespace cots::platform
     struct mouse_point { int x = 0; int y = 0; };
     struct mouse_delta { int x = 0; int y = 0; };
 
-    class mouse_component final : public interface::interface_input_component
+    class mouse_component final : public interface::input_component
     {
     public:
         static constexpr std::size_t button_count =

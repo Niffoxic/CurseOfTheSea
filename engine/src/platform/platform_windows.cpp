@@ -12,8 +12,9 @@ namespace cots::platform
         deinitialize();
     }
 
-    bool windows::initialize(const initialize_info &info)
+    bool windows::initialize()
     {
+        const auto info = reinterpret_cast<const config::windows*>(config_);
         create_window(info);
         COTS_ASSERT_MSG(window_handle_ != nullptr, "Failed to create window");
 
@@ -43,7 +44,7 @@ namespace cots::platform
         }
     }
 
-    void windows::begin_update(float delta_time)
+    void windows::begin_update(const float delta_time)
     {
         //~ poll messages
         MSG msg{};
@@ -54,8 +55,8 @@ namespace cots::platform
             DispatchMessageW(&msg);
         }
 
-        keyboard.begin_update();
-        mouse   .begin_update();
+        keyboard.begin_update(delta_time);
+        mouse   .begin_update(delta_time);
     }
 
     void windows::end_update()
@@ -100,7 +101,7 @@ namespace cots::platform
           ));
     }
 
-    void windows::create_window(const initialize_info &info)
+    void windows::create_window(const config::windows* info)
     {
         WNDCLASSEXW window_class{};
         window_class.cbSize        = sizeof(WNDCLASSEX);
@@ -111,8 +112,8 @@ namespace cots::platform
         window_class.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
         window_class.lpszClassName = CLASS_NAME;
 
-        window_class.hIcon   = load_icon(info.icon_path, 32);
-        window_class.hIconSm = load_icon(info.icon_path, GetSystemMetrics(SM_CXSMICON));
+        window_class.hIcon   = load_icon(info->icon_path, 32);
+        window_class.hIconSm = load_icon(info->icon_path, GetSystemMetrics(SM_CXSMICON));
 
         if (!window_class.hIcon)
         {
@@ -136,15 +137,15 @@ namespace cots::platform
         RECT rt{};
         rt.left   = 0;
         rt.top    = 0;
-        rt.right  = info.window_size.as<LONG>().width;
-        rt.bottom = info.window_size.as<LONG>().height;
+        rt.right  = info->window_size.as<LONG>().width;
+        rt.bottom = info->window_size.as<LONG>().height;
 
         if (not AdjustWindowRectEx(&rt, style, FALSE, ex_style))
         {
             spdlog::warn("Failed to adjust window rect window might work weird");
         }
         //~ updated size
-        const size<int> window_size{
+        const config::size<int> window_size{
             rt.right - rt.left,
             rt.bottom - rt.top
         };
@@ -152,7 +153,7 @@ namespace cots::platform
         //~ create window
         window_handle_ = CreateWindowExW(
             ex_style, CLASS_NAME,
-            info.window_title.c_str(),
+            info->window_title.c_str(),
             style,
             CW_USEDEFAULT, CW_USEDEFAULT,
             window_size.as<LONG>().width,
@@ -172,6 +173,9 @@ namespace cots::platform
         HWND hwnd, const UINT message,
         const WPARAM w_param, const LPARAM l_param)
     {
+        if (keyboard.poll_messages(message, w_param, l_param)) return 0;
+        if (mouse   .poll_messages(message, w_param, l_param)) return 0;
+
         switch (message)
         {
         case WM_DESTROY:
