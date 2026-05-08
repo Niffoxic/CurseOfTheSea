@@ -3,32 +3,26 @@
 #define CURSEOFTHESEA_engine_H
 
 #include <memory>
-#include <engine/cots_api.h>
 
-//~ TODO: Upgrade this with Pimp
 namespace cots
 {
-    namespace platform
-    {
-        class windows;
-    }
+    namespace platform  { class windows; }
+    namespace utils     { class timer;   }
 
-    namespace utils
-    {
-        class timer;
-    }
-    class COTS_API engine
+    class engine
     {
     public:
          engine();
         ~engine();
 
-        [[nodiscard]] bool init   ();
-        [[nodiscard]] int  execute();
+        [[nodiscard]] bool init();
+                      void tick();
 
+        [[nodiscard]] bool  should_close() const noexcept;
+        [[nodiscard]] float delta_time  () const noexcept;
     private:
-        std::shared_ptr<utils::timer> timer_{ nullptr };
-        std::shared_ptr<platform::windows> windows_{ nullptr };
+        std::shared_ptr<utils::timer>      timer_   { nullptr };
+        std::shared_ptr<platform::windows> windows_ { nullptr };
     };
 }
 

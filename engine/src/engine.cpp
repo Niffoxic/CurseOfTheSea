@@ -6,9 +6,9 @@
 #include "engine/registry.h"
 #include "engine/platform/platform_windows.h"
 
-cots::engine::engine() {}
+cots::engine::engine() = default;
 
-cots::engine::~engine() {}
+cots::engine::~engine() = default;
 
 bool cots::engine::init()
 {
@@ -25,22 +25,24 @@ bool cots::engine::init()
         return false;
     }
 
+    timer_->reset();
+    timer_->set_target_frame_ps(160);
+
     return true;
 }
 
-int cots::engine::execute()
+void cots::engine::tick()
 {
-    timer_->reset();
+    timer_->step();
+    windows_->begin_frame(timer_->delta_time());
+}
 
-    timer_->set_target_frame_ps(160);
-    while (true)
-    {
-        timer_->step();
-        windows_->begin_frame(timer_->delta_time());
-        if (windows_->should_close())
-        {
-            return 0;
-        }
-    }
-    return 0;
+bool cots::engine::should_close() const noexcept
+{
+    return windows_->should_close();
+}
+
+float cots::engine::delta_time() const noexcept
+{
+    return timer_->delta_time();
 }

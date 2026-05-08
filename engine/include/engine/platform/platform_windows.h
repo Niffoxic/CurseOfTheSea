@@ -9,7 +9,6 @@
 
 // TODO: Add Subsystem Interface and Subsystem manager
 // TODO: Add Tickable Interface
-//
 
 namespace cots::platform
 {
