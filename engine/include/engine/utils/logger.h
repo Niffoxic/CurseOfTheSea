@@ -2,7 +2,7 @@
 #ifndef CURSEOFTHESEA_LOGGER_H
 #define CURSEOFTHESEA_LOGGER_H
 
-#include "engine/core/framework/interface/interface_singleton.h"
+#include "engine/core/framework/interface/singleton.h"
 
 namespace cots::utils
 {

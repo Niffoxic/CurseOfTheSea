@@ -3,8 +3,9 @@
 #define CURSEOFTHESEA_REGISTRY_H
 
 #include "feature_locator.h"
-#include "../utils/timer.h"
-#include "../platform/platform_windows.h"
+#include "engine/utils/timer.h"
+#include "engine/platform/platform_windows.h"
+#include "engine/utils/event_dispatcher.h"
 
 namespace cots::utils
 {
@@ -14,6 +15,11 @@ namespace cots::utils
 namespace cots::platform
 {
     REGISTER_FEATURE(windows);
+}
+
+namespace cots::events
+{
+    REGISTER_FEATURE(dispatcher);
 }
 
 #endif //CURSEOFTHESEA_REGISTRY_H

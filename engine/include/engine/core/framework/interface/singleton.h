@@ -16,7 +16,7 @@ namespace cots::interface
         static T& instance() noexcept
         {
             static T s_instance;
-            return instance;
+            return s_instance;
         }
 
         singleton(const singleton&)            = delete;

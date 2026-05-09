@@ -31,6 +31,8 @@ target_link_libraries(engine PRIVATE cots_shared)
 
 # fetch packages
 include(FetchContent)
+
+# logger
 FetchContent_Declare(
         spdlog
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
@@ -38,4 +40,14 @@ FetchContent_Declare(
         GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(spdlog)
-target_link_libraries(engine PRIVATE  spdlog::spdlog)
+target_link_libraries(engine PRIVATE spdlog::spdlog)
+
+# ecs and event dispatcher
+FetchContent_Declare(
+        EnTT
+        GIT_REPOSITORY https://github.com/skypjack/entt.git
+        GIT_TAG v3.16.0
+        GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(EnTT)
+target_link_libraries(engine PRIVATE EnTT::EnTT)

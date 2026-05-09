@@ -27,12 +27,20 @@ bool cots::engine::init()
     timer_->reset();
     timer_->set_target_frame_ps(160);
 
+    dispatcher_->subscribe<events::engine_hit_space, &engine::test_event>(*this);
+
     return true;
 }
 
 void cots::engine::tick()
 {
     timer_->step();
+
+    if (windows_->keyboard.is_down(VK_SPACE))
+    {
+        dispatcher_->enqueue<events::engine_hit_space>();
+    }
+
     update_tickable();
 }
 
@@ -48,9 +56,9 @@ float cots::engine::delta_time() const noexcept
 
 void cots::engine::initialize_features()
 {
-    timer_   = feature::locator::resolve<utils::timer>();
-
-    //~ setup windows
+    timer_      = feature::locator::resolve<utils::timer>();
+    dispatcher_ = feature::locator::resolve<events::dispatcher>();
+    //~ setup subsystems
     windows_ = feature::locator::resolve<platform::windows>();
     windows_->setup_config(reinterpret_cast<const std::byte*>(&config_manager_.windows_config()));
 }
@@ -73,6 +81,7 @@ void cots::engine::regulate_subsystems()
 void cots::engine::regulate_tickable()
 {
     tickable_scheduler_.register_type(std::ref(windows_));
+    tickable_scheduler_.register_type(std::ref(dispatcher_));
 }
 
 void cots::engine::update_tickable()
@@ -96,4 +105,9 @@ void cots::engine::update_tickable()
             iter->end_update();
         }
     }
+}
+
+void cots::engine::test_event(const events::engine_hit_space& test)
+{
+    spdlog::info("Engine hit space");
 }

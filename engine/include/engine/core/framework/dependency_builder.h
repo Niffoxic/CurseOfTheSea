@@ -44,9 +44,6 @@ namespace cots::utils
         dependency_scheduler           (const dependency_scheduler&) = delete;
         dependency_scheduler& operator=(const dependency_scheduler&) = delete;
 
-        // ---- registration ----
-
-        // Primary: register by shared_ptr. Does NOT take ownership; stores the raw pointer.
         template<typename U>
         void register_type(const std::shared_ptr<U>& instance)
         {
@@ -54,13 +51,12 @@ namespace cots::utils
             if (!instance) throw std::runtime_error("register_type: null shared_ptr");
 
             const std::type_index id{ typeid(U) };
-            if (nodes_.contains(id)) return;          // already registered, skip
+            if (nodes_.contains(id)) return;          // already registered skip
 
             nodes_[id] = node{ instance.get(), {} };
             dirty_     = true;
         }
 
-        // Convenience: accept std::ref(some_shared_ptr).
         template<typename U>
         void register_type(std::reference_wrapper<std::shared_ptr<U>> ref)
         {
@@ -72,9 +68,6 @@ namespace cots::utils
             register_type(ref.get());
         }
 
-        // ---- dependencies ----
-
-        // Compile-time:  add_dependency<game, renderer, physics>();
         template<typename Depender, typename... DependsUpon>
         void add_dependency()
         {
@@ -87,7 +80,6 @@ namespace cots::utils
             dirty_ = true;
         }
 
-        // Runtime via shared_ptrs:  add_dependency(game_, renderer_, physics_);
         template<typename U, typename... Us>
         void add_dependency(const std::shared_ptr<U>& depender,
                             const std::shared_ptr<Us>&... deps)
@@ -99,8 +91,6 @@ namespace cots::utils
             (add_single_dep(n, typeid(U), typeid(Us)), ...);
             dirty_ = true;
         }
-
-        // ---- iteration ----
 
         size_type size () const noexcept { return nodes_.size(); }
         bool      empty() const noexcept { return nodes_.empty(); }

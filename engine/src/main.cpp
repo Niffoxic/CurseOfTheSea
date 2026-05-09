@@ -6,7 +6,6 @@
 
 #include <cots/engine_services.h>
 #include <cots/cots_config.h>
-
 #include <spdlog/spdlog.h>
 
 int main()
