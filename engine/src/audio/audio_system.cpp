@@ -1,13 +1,15 @@
 // Created by Niffoxic (Harsh Dubey)
 #include "engine/audio/audio_system.h"
 #include "engine/audio/backend/null_backend.h"
+#include "engine/audio/backend/fmod_backend.h"
+
 #include <spdlog/spdlog.h>
 
 #include "engine/core/cots_assert.h"
 
 bool cots::audio::system::initialize()
 {
-    backend_ = std::make_unique<backend::null_backend>();
+    backend_ = std::make_unique<backend::fmod_backend>();
 
     if (not backend_->initialize())
     {

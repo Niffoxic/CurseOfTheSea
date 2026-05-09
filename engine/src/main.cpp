@@ -39,10 +39,12 @@ int main()
     std::uint32_t reload_check_counter = 0u;
 
     //~ test audio
-    auto audio = cots::feature::locator::resolve<cots::audio::system>();
-    auto res = audio->load_sound(cots::audio::make_sound_id("sfx/test.wav"), "assets/sfx/test.wav");
-    auto h = audio->play_one_shot(cots::audio::make_sound_id("sfx/test.wav"));
-    spdlog::info("audio test handle: index={} gen={}", h.index, h.generation);
+    const auto audio = cots::feature::locator::resolve<cots::audio::system>();
+    constexpr auto test_id = cots::audio::make_sound_id("sfx/test.wav");
+    if (not audio->load_sound(test_id, "assets/sfx/test.wav"))
+    {
+        spdlog::error("Failed to load test sound");
+    }
 
     while (not engine.should_close())
     {

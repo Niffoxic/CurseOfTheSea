@@ -31,7 +31,7 @@ namespace cots::interface
         //~ playback
         [[nodiscard]]
         virtual audio::handle play      (audio::sound_id id, const play_params& params) = 0;
-        virtual void          stop      (audio::handle handle, float fade_md)           = 0;
+        virtual void          stop      (audio::handle handle, float fade_ms)           = 0;
         virtual void          set_volume(audio::handle handle, float volume)            = 0;
         virtual void          set_pitch (audio::handle handle, float pitch)             = 0;
 
