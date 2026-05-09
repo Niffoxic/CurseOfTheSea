@@ -14,6 +14,7 @@ add_executable(engine
         src/audio/backend/fmod_backend.cpp
         src/system/audio_services.cpp
         src/system/input_services.cpp
+        src/agility_sdk.cpp
 )
 
 cots_apply_compile_flags(engine)
@@ -56,6 +57,38 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(EnTT)
 target_link_libraries(engine PRIVATE EnTT::EnTT)
+
+# dx12 agility sdk
+set(AGILITY_SDK_VERSION "1.616.0")
+set(AGILITY_SDK_BUILD_VERSION 616)
+
+FetchContent_Declare(
+        agility_sdk
+        URL "https://globalcdn.nuget.org/packages/microsoft.direct3d.d3d12.${AGILITY_SDK_VERSION}.nupkg"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(agility_sdk)
+
+target_include_directories(engine PRIVATE
+        ${agility_sdk_SOURCE_DIR}/build/native/include
+)
+
+target_compile_definitions(engine PRIVATE
+        COTS_AGILITY_SDK_VERSION=${AGILITY_SDK_BUILD_VERSION}
+)
+target_link_libraries(engine PRIVATE d3d12 dxgi)
+
+add_custom_command(TARGET engine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+        $<TARGET_FILE_DIR:engine>/D3D12
+
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${agility_sdk_SOURCE_DIR}/build/native/bin/x64/D3D12Core.dll
+        ${agility_sdk_SOURCE_DIR}/build/native/bin/x64/d3d12SDKLayers.dll
+        $<TARGET_FILE_DIR:engine>/D3D12
+
+        COMMENT "Copying Agility SDK DLLs to D3D12/"
+)
 
 # audio
 target_link_libraries(engine PRIVATE FMOD::Core)

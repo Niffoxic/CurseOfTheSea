@@ -39,4 +39,4 @@ namespace game
             log.info("debug: audio resumed");
         }
     }
-}
+} // namespace game

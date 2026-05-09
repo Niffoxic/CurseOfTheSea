@@ -21,4 +21,3 @@ cmake_install.cmake
 *.pdb
 *.ilk
 *.exp
-
