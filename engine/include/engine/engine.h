@@ -42,15 +42,11 @@ namespace cots
         //~ processes
         void update_tickable();
 
-        //~ test event
-        void test_event(const events::engine_hit_space& test);
-
     private:
         config::manager config_manager_{};
 
         std::shared_ptr<utils::timer>       timer_     { nullptr };
         std::shared_ptr<platform::windows>  windows_   { nullptr };
-        std::shared_ptr<events::dispatcher> dispatcher_{ nullptr };
 
         utils::dependency_scheduler<interface::subsystem> subsystem_scheduler_;
         utils::dependency_scheduler<interface::tickable>  tickable_scheduler_;

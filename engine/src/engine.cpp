@@ -7,8 +7,16 @@
 #include "engine/core/cots_assert.h"
 #include "engine/system/define_features.h"
 #include "engine/platform/platform_windows.h"
+#include "engine/graphics/render.h"
 
 #include "engine/utils/profiler.h"
+
+#define REGISTER_FEATURE_TO_SCHEDULER(scheduler, feature_class) \
+do { \
+auto _cots_feat = ::cots::feature::locator::resolve<feature_class>(); \
+(scheduler).register_type(std::ref(_cots_feat)); \
+} while(0)
+
 
 cots::engine::engine() = default;
 
@@ -26,10 +34,9 @@ bool cots::engine::init()
     regulate_subsystems();
     regulate_tickable  ();
 
+    //~ defaults
     timer_->reset();
     timer_->set_target_frame_ps(160);
-
-    dispatcher_->subscribe<events::engine_hit_space, &engine::test_event>(*this);
 
     return true;
 }
@@ -53,8 +60,7 @@ float cots::engine::delta_time() const noexcept
 
 void cots::engine::initialize_features()
 {
-    timer_      = feature::locator::resolve<utils::timer>();
-    dispatcher_ = feature::locator::resolve<events::dispatcher>();
+    timer_      = feature::locator::resolve<utils::timer>      ();
 
     //~ setup subsystems
     windows_ = feature::locator::resolve<platform::windows>();
@@ -63,9 +69,15 @@ void cots::engine::initialize_features()
 
 void cots::engine::regulate_subsystems()
 {
-    auto audio = feature::locator::resolve<audio::system>();
-    subsystem_scheduler_.register_type(std::ref(audio));
+    REGISTER_FEATURE_TO_SCHEDULER(subsystem_scheduler_, audio::system);
+
     subsystem_scheduler_.register_type(std::ref(windows_));
+
+    auto render  = feature::locator::resolve<graphics::render>();
+    subsystem_scheduler_.register_type(std::ref(render));
+
+    //~ configure dependencies
+    subsystem_scheduler_.add_dependency(render, windows_);
 
     for (const auto subsystem: subsystem_scheduler_)
     {
@@ -80,10 +92,16 @@ void cots::engine::regulate_subsystems()
 
 void cots::engine::regulate_tickable()
 {
-    auto audio = feature::locator::resolve<audio::system>();
-    tickable_scheduler_.register_type(std::ref(audio));
+    REGISTER_FEATURE_TO_SCHEDULER(tickable_scheduler_, audio::system);
+    REGISTER_FEATURE_TO_SCHEDULER(tickable_scheduler_, events::dispatcher);
+
+    auto render  = feature::locator::resolve<graphics::render>();
+
     tickable_scheduler_.register_type(std::ref(windows_));
-    tickable_scheduler_.register_type(std::ref(dispatcher_));
+    tickable_scheduler_.register_type(std::ref(render));
+
+    //~ dependencies
+    tickable_scheduler_.add_dependency(render, windows_);
 }
 
 void cots::engine::update_tickable()
@@ -107,9 +125,4 @@ void cots::engine::update_tickable()
             iter->end_update();
         }
     }
-}
-
-void cots::engine::test_event(const events::engine_hit_space& test)
-{
-    spdlog::info("Engine hit space");
 }

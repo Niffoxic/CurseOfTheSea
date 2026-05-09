@@ -15,6 +15,7 @@ add_executable(engine
         src/system/audio_services.cpp
         src/system/input_services.cpp
         src/agility_sdk.cpp
+        src/graphics/render.cpp
 )
 
 cots_apply_compile_flags(engine)
