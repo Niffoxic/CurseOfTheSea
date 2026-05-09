@@ -178,6 +178,20 @@ namespace cots::platform
 
         switch (message)
         {
+        case WM_ACTIVATE:
+        {
+            if (LOWORD(w_param) == WA_INACTIVE)
+            {
+                screen_state_ &= ~screen_state::active;
+                screen_state_ |= screen_state::inactive;
+            }
+            else
+            {
+                screen_state_ |= screen_state::active;
+                screen_state_ &= ~screen_state::inactive;
+            }
+            return 0;
+        }
         case WM_DESTROY:
             status_ = status::Quit;
             spdlog::info("should be quitting");

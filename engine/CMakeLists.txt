@@ -13,6 +13,7 @@ add_executable(engine
         src/audio/backend/null_backend.cpp
         src/audio/backend/fmod_backend.cpp
         src/system/audio_services.cpp
+        src/system/input_services.cpp
 )
 
 cots_apply_compile_flags(engine)
