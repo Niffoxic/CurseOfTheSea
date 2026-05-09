@@ -1,68 +1,56 @@
-#include <cstdint>
+// Created by Niffoxic (Harsh Dubey)
 #include <cots/game_api.h>
-#include <cstdio>
-#include <string>
+#include "game_state.h"
+#include "player.h"
+#include "audio_test.h"
+#include "debug_input.h"
 
 namespace
 {
-    struct game_state
-    {
-        const cots::module::services* services;
-        std::uint64_t frame_count;
-        float         elapsed;
-        float         print_accum;
-    };
+    using game::game_state;
 
     void on_load(cots::module::memory* mem, const cots::module::services* svc)
     {
-        auto* state = static_cast<game_state*>(mem->permanent);
+        auto* gs = static_cast<game_state*>(mem->permanent);
 
-        state->services = svc;
+        gs->services = svc;
 
         if (!mem->initialized)
         {
-            state->frame_count = 0;
-            state->elapsed     = 0.0f;
-            state->print_accum = 0.0f;
+            gs->frame_count = 0;
+            gs->elapsed     = 0.f;
+
+            game::player_init    (*gs);
+            game::audio_test_init(*gs);
+
             mem->initialized = true;
-            svc->log.info("first-time init complete");
+            svc->log.info("game: first-time init complete");
         }
         else
         {
-            svc->log.info("hot-reloaded: state preserved");
+            svc->log.info("game: hot-reloaded, state preserved");
         }
-
-        state->services->audio.load_sound("assets/sfx/test.wav", false);
-        state->services->audio.play_oneshot("assets/sfx/test.wav", 1.0f);
     }
 
     void on_unload(cots::module::memory* mem)
     {
-        auto* state = static_cast<game_state*>(mem->permanent);
-        if (state && state->services) state->services->log.info("unloading");
+        if (auto* gs = static_cast<game_state*>(mem->permanent);
+            gs && gs->services)
+        {
+            gs->services->log.info("game: unloading");
+        }
     }
 
     void update(cots::module::memory* mem, float dt)
     {
-        auto* state = static_cast<game_state*>(mem->permanent);
+        auto* gs = static_cast<game_state*>(mem->permanent);
 
-        state->frame_count++;
-        state->elapsed     += dt;
-        state->print_accum += dt;
+        gs->frame_count++;
+        gs->elapsed += dt;
 
-        if (state->print_accum >= 1.0f)
-        {
-            state->print_accum = 0.0f;
-            char buf[256];
-            int width, height;
-            state->services->window.get_size(&width, &height);
-            std::string test = "Window Size: " + std::to_string(width) + "x" + std::to_string(height);
-            std::snprintf(buf, sizeof(buf),
-                          "%s frame=%llu  elapsed=%.1fs", test.c_str(),
-                          static_cast<unsigned long long>(state->frame_count),
-                          state->elapsed);
-            state->services->log.info(buf);
-        }
+        game::player_update     (*gs, dt);
+        game::audio_test_update (*gs, dt);
+        game::debug_input_update(*gs);
     }
 }
 
