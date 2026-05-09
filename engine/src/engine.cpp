@@ -35,12 +35,6 @@ bool cots::engine::init()
 void cots::engine::tick()
 {
     timer_->step();
-
-    if (windows_->keyboard.is_down(VK_SPACE))
-    {
-        dispatcher_->enqueue<events::engine_hit_space>();
-    }
-
     update_tickable();
 }
 

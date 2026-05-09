@@ -46,6 +46,9 @@ namespace cots::platform
 
     void windows::begin_update(const float delta_time)
     {
+        keyboard.begin_update(delta_time);
+        mouse   .begin_update(delta_time);
+
         //~ poll messages
         MSG msg{};
 
@@ -54,9 +57,6 @@ namespace cots::platform
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
-
-        keyboard.begin_update(delta_time);
-        mouse   .begin_update(delta_time);
     }
 
     void windows::end_update()

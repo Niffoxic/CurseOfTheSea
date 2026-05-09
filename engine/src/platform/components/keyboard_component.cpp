@@ -1,17 +1,16 @@
 // Created by Niffoxic (Harsh Dubey)
 #include "engine/platform/components/keyboard_component.h"
-
 #include <algorithm>
+
 
 void cots::platform::keyboard_component::begin_update(float delta_time)
 {
-    //~ not needed
+    pressed_ .reset();
+    released_.reset();
 }
 
 void cots::platform::keyboard_component::end_update()
 {
-    pressed_ .reset();
-    released_.reset();
 }
 
 bool cots::platform::keyboard_component::initialize(const interface::input_initialize_info &info)
@@ -38,7 +37,6 @@ bool cots::platform::keyboard_component::poll_messages(
         const int vk = static_cast<int>(w_param);
         if (!valid(vk)) return false;
 
-        // only fire press edge on real transitions not auto repeat
         if (!down_.test(vk) && !repeat(l_param))
             pressed_.set(vk);
         down_.set(vk);
@@ -59,7 +57,6 @@ bool cots::platform::keyboard_component::poll_messages(
     }
     case WM_KILLFOCUS:
     case WM_SETFOCUS:
-        // prevent stuck keys when the window loses gains focus
         clear();
         return false;
     default:
