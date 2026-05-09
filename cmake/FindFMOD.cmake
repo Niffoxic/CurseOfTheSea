@@ -1,4 +1,4 @@
-set(FMOD_LOCAL_PATH    "${CMAKE_SOURCE_DIR}/third_party/fmod")
+set(FMOD_LOCAL_PATH    "${CMAKE_SOURCE_DIR}/vendor/fmod")
 set(FMOD_DEFAULT_PATH  "C:/Program Files (x86)/FMOD SoundSystem/FMOD Studio API Windows")
 
 find_path(FMOD_CORE_INCLUDE_DIR

@@ -8,6 +8,9 @@
 #include <cots/cots_config.h>
 #include <spdlog/spdlog.h>
 
+#include "engine/audio/audio_system.h"
+#include "engine/system/feature_locator.h"
+
 int main()
 {
 #if defined(COTS_DEBUG_RUNTIME)
@@ -34,6 +37,12 @@ int main()
 
     spdlog::info("engine: host initialized");
     std::uint32_t reload_check_counter = 0u;
+
+    //~ test audio
+    auto audio = cots::feature::locator::resolve<cots::audio::system>();
+    auto res = audio->load_sound(cots::audio::make_sound_id("sfx/test.wav"), "assets/sfx/test.wav");
+    auto h = audio->play_one_shot(cots::audio::make_sound_id("sfx/test.wav"));
+    spdlog::info("audio test handle: index={} gen={}", h.index, h.generation);
 
     while (not engine.should_close())
     {

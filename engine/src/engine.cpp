@@ -65,6 +65,8 @@ void cots::engine::initialize_features()
 
 void cots::engine::regulate_subsystems()
 {
+    auto audio = feature::locator::resolve<audio::system>();
+    subsystem_scheduler_.register_type(std::ref(audio));
     subsystem_scheduler_.register_type(std::ref(windows_));
 
     for (const auto subsystem: subsystem_scheduler_)
@@ -80,6 +82,9 @@ void cots::engine::regulate_subsystems()
 
 void cots::engine::regulate_tickable()
 {
+    auto audio = feature::locator::resolve<audio::system>();
+    tickable_scheduler_.register_type(std::ref(audio));
+
     tickable_scheduler_.register_type(std::ref(windows_));
     tickable_scheduler_.register_type(std::ref(dispatcher_));
 }

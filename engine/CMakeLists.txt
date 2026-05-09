@@ -9,6 +9,10 @@ add_executable(engine
         src/system/window_services.cpp
         src/platform/components/keyboard_component.cpp
         src/platform/components/mouse_component.cpp
+        src/audio/audio_system.cpp
+        src/audio/backend/null_backend.cpp
+        src/audio/backend/fmod_backend.cpp
+        src/system/audio_services.cpp
 )
 
 cots_apply_compile_flags(engine)
@@ -51,3 +55,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(EnTT)
 target_link_libraries(engine PRIVATE EnTT::EnTT)
+
+# audio
+target_link_libraries(engine PRIVATE FMOD::Core)
+
+add_custom_command(TARGET engine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:FMOD::Core>
+        $<TARGET_FILE_DIR:engine>
+        COMMENT "Copying FMOD Core DLL"
+)

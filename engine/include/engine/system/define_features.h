@@ -6,6 +6,7 @@
 #include "engine/utils/timer.h"
 #include "engine/platform/platform_windows.h"
 #include "engine/utils/event_dispatcher.h"
+#include "engine/audio/audio_system.h"
 
 namespace cots::utils
 {
@@ -20,6 +21,11 @@ namespace cots::platform
 namespace cots::events
 {
     REGISTER_FEATURE(dispatcher);
+}
+
+namespace cots::audio
+{
+    REGISTER_FEATURE(system);
 }
 
 #endif //CURSEOFTHESEA_REGISTRY_H
