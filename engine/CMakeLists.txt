@@ -90,6 +90,36 @@ add_custom_command(TARGET engine POST_BUILD
         COMMENT "Copying Agility SDK DLLs to D3D12/"
 )
 
+# WinPIX Event Runtime
+set(WINPIX_VERSION "1.0.240308001")
+
+FetchContent_Declare(
+        winpix
+        URL "https://globalcdn.nuget.org/packages/winpixeventruntime.${WINPIX_VERSION}.nupkg"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(winpix)
+
+target_include_directories(engine PRIVATE
+        ${winpix_SOURCE_DIR}/Include
+)
+
+target_link_libraries(engine PRIVATE
+        ${winpix_SOURCE_DIR}/bin/x64/WinPixEventRuntime.lib
+)
+
+target_compile_definitions(engine PRIVATE
+        $<$<CONFIG:Debug>:USE_PIX=1>
+        $<$<CONFIG:Release>:USE_PIX=1>
+)
+
+add_custom_command(TARGET engine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${winpix_SOURCE_DIR}/bin/x64/WinPixEventRuntime.dll
+        $<TARGET_FILE_DIR:engine>
+        COMMENT "Copying WinPixEventRuntime.dll"
+)
+
 # audio
 target_link_libraries(engine PRIVATE FMOD::Core)
 

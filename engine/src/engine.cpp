@@ -8,6 +8,8 @@
 #include "engine/system/define_features.h"
 #include "engine/platform/platform_windows.h"
 
+#include "engine/utils/profiler.h"
+
 cots::engine::engine() = default;
 
 cots::engine::~engine()
@@ -34,6 +36,7 @@ bool cots::engine::init()
 
 void cots::engine::tick()
 {
+    COTS_PROFILE_SCOPE("engine::tick");
     timer_->step();
     update_tickable();
 }
