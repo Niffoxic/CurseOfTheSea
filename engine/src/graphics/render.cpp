@@ -1,6 +1,7 @@
 // Created by Niffoxic (Harsh Dubey)
 
 #include "engine/graphics/render.h"
+#include "engine/graphics/hardware/device.h"
 
 #include "engine/core/cots_assert.h"
 #include "spdlog/spdlog.h"
@@ -9,9 +10,20 @@ cots::graphics::render::~render() = default;
 
 bool cots::graphics::render::initialize()
 {
+    hardware::device test_device;
+    if (!test_device.initialize())
+    {
+        spdlog::error("[render] device init failed");
+        return false;
+    }
+
+    spdlog::info("[render] {} adapters available",
+                 test_device.adapters_info().size());
+
+    test_device.deinitialize();
+
     running_ = true;
     render_thread_ = std::thread(&render::render_thread_main, this);
-    spdlog::info(("Renderer initialized"));
     return true;
 }
 

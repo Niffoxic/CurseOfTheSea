@@ -5,7 +5,7 @@
 #include <windows.h>
 #include "tickable.h"
 
-namespace cots::interface
+namespace cots::interfaces
 {
     struct input_initialize_info
     {

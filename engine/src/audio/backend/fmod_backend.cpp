@@ -121,7 +121,7 @@ void cots::audio::backend::fmod_backend::unload_sound(audio::sound_id id)
 
 cots::audio::handle cots::audio::backend::fmod_backend::play(
     const audio::sound_id id,
-    const interface::play_params &params)
+    const interfaces::play_params &params)
 {
     const auto it = sounds_.find(id.value);
     if (it == sounds_.end())
@@ -255,7 +255,7 @@ void cots::audio::backend::fmod_backend::set_position(
 }
 
 void cots::audio::backend::fmod_backend::set_listener(
-    const interface::listener_state &s)
+    const interfaces::listener_state &s)
 {
     if (!system_) return;
 

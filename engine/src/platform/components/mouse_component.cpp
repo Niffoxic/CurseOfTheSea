@@ -15,7 +15,7 @@ namespace cots::platform
         }
     } // namespace
 
-    bool mouse_component::initialize(const interface::input_initialize_info& info)
+    bool mouse_component::initialize(const interfaces::input_initialize_info& info)
     {
         hwnd_ = info.window_handle;
         clear();

@@ -2,7 +2,7 @@
 #ifndef CURSEOFTHESEA_INTERFACE_TICKABLE_H
 #define CURSEOFTHESEA_INTERFACE_TICKABLE_H
 
-namespace cots::interface
+namespace cots::interfaces
 {
     class tickable
     {

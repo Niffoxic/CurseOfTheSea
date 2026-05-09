@@ -113,7 +113,7 @@ namespace
 
     void set_listener(const float pos[3], const float fwd[3], const float up[3])
     {
-        cots::interface::listener_state s{};
+        cots::interfaces::listener_state s{};
         s.position[0] = pos[0]; s.position[1] = pos[1]; s.position[2] = pos[2];
         s.forward [0] = fwd[0]; s.forward [1] = fwd[1]; s.forward [2] = fwd[2];
         s.up      [0] = up [0]; s.up      [1] = up [1]; s.up      [2] = up [2];

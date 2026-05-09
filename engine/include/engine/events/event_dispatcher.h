@@ -3,11 +3,13 @@
 #define CURSEOFTHESEA_EVENT_DISPATCHER_H
 
 #include "engine/core/framework/interface/tickable.h"
+#include "engine/system/feature_locator.h"
+
 #include <entt/entt.hpp>
 
 namespace cots::events
 {
-    class dispatcher final: public interface::tickable
+    class dispatcher final: public interfaces::tickable
     {
     public:
          dispatcher() = default;
@@ -54,6 +56,17 @@ namespace cots::events
     private:
         entt::dispatcher dispatcher_;
     };
-} // namespace cots::feature
+
+    //~ helpers
+    template<typename Event, typename...Args>
+    void publish(Args&&...args)
+    {
+        if (const auto d = feature::locator::resolve<dispatcher>())
+        {
+            d->publish<Event>(std::forward<Args>(args)...);
+        }
+    }
+
+} // namespace cots::events
 
 #endif //CURSEOFTHESEA_EVENT_DISPATCHER_H

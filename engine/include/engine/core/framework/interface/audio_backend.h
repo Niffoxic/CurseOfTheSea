@@ -10,7 +10,7 @@
 #include "engine/audio/audio_bus.h"
 #include "engine/audio/sound_id.h"
 
-namespace cots::interface
+namespace cots::interfaces
 {
     //~ following Y Up right hand convention
     struct play_params

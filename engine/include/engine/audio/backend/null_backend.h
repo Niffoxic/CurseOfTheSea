@@ -6,7 +6,7 @@
 
 namespace cots::audio::backend
 {
-    class null_backend final: public interface::audio_backend
+    class null_backend final: public interfaces::audio_backend
     {
     public:
         [[nodiscard]]
@@ -21,7 +21,7 @@ namespace cots::audio::backend
         void unload_sound(audio::sound_id id)                        override;
 
         [[nodiscard]]
-        audio::handle play      (audio::sound_id id, const interface::play_params &params)  override;
+        audio::handle play      (audio::sound_id id, const interfaces::play_params &params)  override;
         void          stop      (audio::handle handle, float fade_md)                       override;
         void          set_volume(audio::handle handle, float volume)                        override;
         void          set_pitch (audio::handle handle, float pitch)                         override;
@@ -40,7 +40,7 @@ namespace cots::audio::backend
             const float pos[3],
             const float vel[3]) override;
 
-        void set_listener(const interface::listener_state &s) override;
+        void set_listener(const interfaces::listener_state &s) override;
 
     private:
         std::uint32_t next_index_     { 1u };

@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <typeindex>
 #include <unordered_map>
-#include "../core/cots_assert.h"
+#include "engine/core/cots_assert.h"
 
 namespace cots::feature
 {

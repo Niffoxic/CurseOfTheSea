@@ -84,7 +84,7 @@ namespace cots::platform
         return (state & check_with) == check_with;
     }
 
-    class windows final: public interface::subsystem ,public interface::tickable
+    class windows final: public interfaces::subsystem ,public interfaces::tickable
     {
     public:
          windows() = default;

@@ -10,8 +10,8 @@
 namespace cots::graphics
 {
     class render final:
-        public interface::subsystem,
-        public interface::tickable
+        public interfaces::subsystem,
+        public interfaces::tickable
     {
     public:
          render() = default;

@@ -13,7 +13,7 @@ void cots::platform::keyboard_component::end_update()
 {
 }
 
-bool cots::platform::keyboard_component::initialize(const interface::input_initialize_info &info)
+bool cots::platform::keyboard_component::initialize(const interfaces::input_initialize_info &info)
 {
     clear();
     return true;

@@ -22,7 +22,7 @@ namespace cots::platform
     struct mouse_point { int x = 0; int y = 0; };
     struct mouse_delta { int x = 0; int y = 0; };
 
-    class mouse_component final : public interface::input_component
+    class mouse_component final : public interfaces::input_component
     {
     public:
         static constexpr std::size_t button_count =
@@ -38,7 +38,7 @@ namespace cots::platform
         mouse_component& operator=(mouse_component&&)      = default;
 
         //~ lifecycle
-        [[nodiscard]] bool initialize(const interface::input_initialize_info& info) override;
+        [[nodiscard]] bool initialize(const interfaces::input_initialize_info& info) override;
 
         void begin_update(float dt) override;
 

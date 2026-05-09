@@ -2,7 +2,7 @@
 #ifndef CURSEOFTHESEA_SUBSYSTEM_H
 #define CURSEOFTHESEA_SUBSYSTEM_H
 
-namespace cots::interface
+namespace cots::interfaces
 {
     class subsystem
     {

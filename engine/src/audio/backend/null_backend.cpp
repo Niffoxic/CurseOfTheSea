@@ -39,7 +39,7 @@ void cots::audio::backend::null_backend::unload_sound(audio::sound_id id)
 
 cots::audio::handle cots::audio::backend::null_backend::play(
     audio::sound_id id,
-    const interface::play_params &params)
+    const interfaces::play_params &params)
 {
     return audio::handle{next_index_++, next_generation_++};
 }
@@ -78,7 +78,7 @@ void cots::audio::backend::null_backend::set_position(
 }
 
 void cots::audio::backend::null_backend::set_listener(
-    const interface::listener_state &s)
+    const interfaces::listener_state &s)
 {
     spdlog::info("null lisenters");
 }

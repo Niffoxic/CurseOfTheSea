@@ -6,7 +6,7 @@
 
 namespace cots::utils
 {
-    class logger final: public interface::singleton<logger>
+    class logger final: public interfaces::singleton<logger>
     {
         COTS_SINGLETON(logger)
          logger() = default;

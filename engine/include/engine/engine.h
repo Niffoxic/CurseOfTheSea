@@ -48,8 +48,8 @@ namespace cots
         std::shared_ptr<utils::timer>       timer_     { nullptr };
         std::shared_ptr<platform::windows>  windows_   { nullptr };
 
-        utils::dependency_scheduler<interface::subsystem> subsystem_scheduler_;
-        utils::dependency_scheduler<interface::tickable>  tickable_scheduler_;
+        utils::dependency_scheduler<interfaces::subsystem> subsystem_scheduler_;
+        utils::dependency_scheduler<interfaces::tickable>  tickable_scheduler_;
     };
 }
 

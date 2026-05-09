@@ -64,7 +64,7 @@ namespace cots::platform
         return (state & check_with) == check_with;
     }
 
-    class keyboard_component final: public interface::input_component
+    class keyboard_component final: public interfaces::input_component
     {
     public:
         static constexpr std::size_t key_count = 256;
@@ -78,7 +78,7 @@ namespace cots::platform
         keyboard_component& operator=(const keyboard_component&) = delete;
         keyboard_component& operator=(keyboard_component&&)      = default;
 
-        [[nodiscard]] bool initialize(const interface::input_initialize_info &info) override;
+        [[nodiscard]] bool initialize(const interfaces::input_initialize_info &info) override;
 
         void begin_update(float delta_time) override;
 

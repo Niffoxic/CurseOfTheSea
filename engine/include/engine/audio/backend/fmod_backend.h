@@ -18,7 +18,7 @@ namespace FMOD
 
 namespace cots::audio::backend
 {
-    class fmod_backend final: public interface::audio_backend
+    class fmod_backend final: public interfaces::audio_backend
     {
     public:
          fmod_backend();
@@ -36,7 +36,7 @@ namespace cots::audio::backend
         void unload_sound(audio::sound_id id)                        override;
 
         [[nodiscard]]
-        audio::handle play      (audio::sound_id id, const interface::play_params &params)  override;
+        audio::handle play      (audio::sound_id id, const interfaces::play_params &params)  override;
         void          stop      (audio::handle handle, float fade_ms)                       override;
         void          set_volume(audio::handle handle, float volume)                        override;
         void          set_pitch (audio::handle handle, float pitch)                         override;
@@ -50,7 +50,7 @@ namespace cots::audio::backend
         void set_position(  audio::handle handle,
                             const float pos[3],
                             const float vel[3]) override;
-        void set_listener(const interface::listener_state &s) override;
+        void set_listener(const interfaces::listener_state &s) override;
 
         void pause_all () override;
         void resume_all() override;

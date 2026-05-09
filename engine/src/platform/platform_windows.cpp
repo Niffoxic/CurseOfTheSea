@@ -18,7 +18,7 @@ namespace cots::platform
         create_window(info);
         COTS_ASSERT_MSG(window_handle_ != nullptr, "Failed to create window");
 
-        interface::input_initialize_info input_info{};
+        interfaces::input_initialize_info input_info{};
         input_info.window_handle = window_handle_;
 
         if (not keyboard.initialize(input_info))

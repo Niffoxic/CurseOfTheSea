@@ -18,7 +18,7 @@ namespace cots::audio
         bool       looping     { true };
     };
 
-    class system final: public interface::subsystem, public interface::tickable
+    class system final: public interfaces::subsystem, public interfaces::tickable
     {
     public:
          system() = default;
@@ -55,7 +55,7 @@ namespace cots::audio
         [[nodiscard]] audio::handle play_3d(audio::sound_id id, const play_3d_params& param) const;
 
         void set_position(audio::handle h, const float pos[3], const float vel[3]) const;
-        void set_listener(const interface::listener_state& s) const;
+        void set_listener(const interfaces::listener_state& s) const;
 
         //~ bus
         void set_bus_volume(audio::bus b, float v) const;
@@ -65,9 +65,9 @@ namespace cots::audio
         void pause_all () const;
         void resume_all() const;
 
-        [[nodiscard]] interface::audio_backend* backend() const noexcept;
+        [[nodiscard]] interfaces::audio_backend* backend() const noexcept;
     private:
-        std::unique_ptr<interface::audio_backend> backend_{ nullptr };
+        std::unique_ptr<interfaces::audio_backend> backend_{ nullptr };
     };
 }
 

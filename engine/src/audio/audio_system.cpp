@@ -56,7 +56,7 @@ cots::audio::handle cots::audio::system::play_one_shot(
 {
     COTS_ASSERT_MSG(backend_, "Audio backend not initialized");
 
-    interface::play_params params{};
+    interfaces::play_params params{};
     params.volume = volume;
     params.looping = false;
     return backend_->play(id, params);
@@ -67,7 +67,7 @@ cots::audio::handle cots::audio::system::play_loop(
     const audio::bus target) const
 {
     COTS_ASSERT_MSG(backend_, "Audio backend not initialized");
-    interface::play_params params{};
+    interfaces::play_params params{};
     params.bus     = target;
     params.looping = true;
     return backend_->play(id, params);
@@ -103,7 +103,7 @@ cots::audio::handle cots::audio::system::play_3d(
 {
     COTS_ASSERT_MSG(backend_, "Audio backend not initialized");
 
-    interface::play_params params{};
+    interfaces::play_params params{};
     params.bus          = param.bus;
     params.looping      = param.looping;
     params.positional   = true;
@@ -124,7 +124,7 @@ void cots::audio::system::set_position(
     backend_->set_position(h, pos, vel);
 }
 
-void cots::audio::system::set_listener(const interface::listener_state &s) const
+void cots::audio::system::set_listener(const interfaces::listener_state &s) const
 {
     COTS_ASSERT_MSG(backend_, "Audio backend not initialized");
     backend_->set_listener(s);
@@ -154,7 +154,7 @@ void cots::audio::system::resume_all() const
     backend_->resume_all();
 }
 
-cots::interface::audio_backend * cots::audio::system::backend() const noexcept
+cots::interfaces::audio_backend * cots::audio::system::backend() const noexcept
 {
     return backend_.get();
 }
