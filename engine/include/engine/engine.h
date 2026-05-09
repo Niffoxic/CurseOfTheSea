@@ -4,6 +4,7 @@
 
 #include <memory>
 
+#include "audio/audio_handle.h"
 #include "core/engine_config.h"
 #include "core/framework/interface/subsystem.h"
 #include "core/framework/interface/tickable.h"
@@ -19,6 +20,7 @@ namespace cots
     namespace platform{ class windows; }
     namespace utils   { class timer;   }
     namespace events  { class dispatcher;}
+    namespace audio   { class system;  }
 
     class engine
     {

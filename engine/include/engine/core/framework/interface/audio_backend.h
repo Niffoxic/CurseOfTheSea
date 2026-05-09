@@ -12,12 +12,27 @@
 
 namespace cots::interface
 {
+    //~ following Y Up right hand convention
     struct play_params
     {
         float      volume { 1.f };
         float      pitch  { 1.f };
         audio::bus bus    { audio::bus::master };
         bool       looping{ false };
+
+        bool       positional   { false };
+        float      position[3]  { 0.f, 0.f, 0.f };
+        float      velocity[3]  { 0.f, 0.f, 0.f };
+        float      min_distance { 1.f };
+        float      max_distance { 100.f };
+    };
+
+    struct listener_state
+    {
+        float position[3] { 0, 0, 0 };
+        float velocity[3] { 0, 0, 0 };
+        float forward[3]  { 0, 0, -1 };
+        float up[3]       { 0, 1, 0 };
     };
 
     class audio_backend: public subsystem, public tickable
@@ -25,7 +40,7 @@ namespace cots::interface
     public:
         //~ resource management
         [[nodiscard]]
-        virtual bool load_sound  (audio::sound_id id, std::string_view path)  = 0;
+        virtual bool load_sound  (audio::sound_id id, std::string_view path, bool positional) = 0;
         virtual void unload_sound(audio::sound_id id)                         = 0;
 
         //~ playback
@@ -38,8 +53,14 @@ namespace cots::interface
         [[nodiscard]]
         virtual bool is_playing(audio::handle handle) const = 0;
 
+        //~ 3d
+        virtual void set_position(audio::handle handle,
+                                  const float pos[3],
+                                  const float vel[3])               = 0;
+        virtual void set_listener(const listener_state& s)          = 0;
+
         // bus control
-        virtual void set_bus_volume(audio::bus b, float v) = 0;
+        virtual void set_bus_volume(audio::bus b, float v)    = 0;
         virtual void set_bus_muted (audio::bus b, bool muted) = 0;
 
         // global

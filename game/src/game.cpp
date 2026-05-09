@@ -31,6 +31,9 @@ namespace
         {
             svc->log.info("hot-reloaded: state preserved");
         }
+
+        state->services->audio.load_sound("assets/sfx/test.wav", false);
+        state->services->audio.play_oneshot("assets/sfx/test.wav", 1.0f);
     }
 
     void on_unload(cots::module::memory* mem)

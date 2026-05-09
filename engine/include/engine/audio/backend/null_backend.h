@@ -17,7 +17,7 @@ namespace cots::audio::backend
         void end_update  ()         override;
 
         [[nodiscard]]
-        bool load_sound  (audio::sound_id id, std::string_view path) override;
+        bool load_sound  (audio::sound_id id, std::string_view path, bool positional) override;
         void unload_sound(audio::sound_id id)                        override;
 
         [[nodiscard]]
@@ -34,6 +34,14 @@ namespace cots::audio::backend
 
         void pause_all () override;
         void resume_all() override;
+
+        void set_position(
+            audio::handle handle,
+            const float pos[3],
+            const float vel[3]) override;
+
+        void set_listener(const interface::listener_state &s) override;
+
     private:
         std::uint32_t next_index_     { 1u };
         std::uint32_t next_generation_{ 1u };

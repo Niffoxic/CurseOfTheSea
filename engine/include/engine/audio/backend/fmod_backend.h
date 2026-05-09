@@ -32,7 +32,7 @@ namespace cots::audio::backend
         void end_update  ()         override;
 
         [[nodiscard]]
-        bool load_sound  (audio::sound_id id, std::string_view path) override;
+        bool load_sound  (audio::sound_id id, std::string_view path, bool positional) override;
         void unload_sound(audio::sound_id id)                        override;
 
         [[nodiscard]]
@@ -46,6 +46,11 @@ namespace cots::audio::backend
 
         void set_bus_volume(audio::bus b, float v)    override;
         void set_bus_muted (audio::bus b, bool muted) override;
+
+        void set_position(  audio::handle handle,
+                            const float pos[3],
+                            const float vel[3]) override;
+        void set_listener(const interface::listener_state &s) override;
 
         void pause_all () override;
         void resume_all() override;
@@ -62,8 +67,7 @@ namespace cots::audio::backend
         // finds a free slot or recycles a finished one
         [[nodiscard]] std::uint32_t       acquire_slot();
         [[nodiscard]] FMOD::ChannelGroup* group_for   (bus b) const noexcept;
-
-    private:
+     private:
         static constexpr std::size_t max_voices = 256;
 
         FMOD::System* system_{ nullptr };

@@ -38,14 +38,6 @@ int main()
     spdlog::info("engine: host initialized");
     std::uint32_t reload_check_counter = 0u;
 
-    //~ test audio
-    const auto audio = cots::feature::locator::resolve<cots::audio::system>();
-    constexpr auto test_id = cots::audio::make_sound_id("sfx/test.wav");
-    if (not audio->load_sound(test_id, "assets/sfx/test.wav"))
-    {
-        spdlog::error("Failed to load test sound");
-    }
-
     while (not engine.should_close())
     {
 #if defined(COTS_HOT_RELOAD)

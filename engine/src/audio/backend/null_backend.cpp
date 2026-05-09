@@ -23,7 +23,10 @@ void cots::audio::backend::null_backend::end_update()
 
 }
 
-bool cots::audio::backend::null_backend::load_sound(audio::sound_id id, std::string_view path)
+bool cots::audio::backend::null_backend::load_sound(
+    const audio::sound_id id,
+    const std::string_view path,
+    const bool positional)
 {
     spdlog::info("null loaded sound: {}", path);
     return true;
@@ -66,3 +69,16 @@ void cots::audio::backend::null_backend::pause_all()
 
 void cots::audio::backend::null_backend::resume_all()
 {}
+
+void cots::audio::backend::null_backend::set_position(
+    audio::handle handle,
+    const float pos[3], const float vel[3])
+{
+    spdlog::info("null set position: {}, {}, {}", pos[0], pos[1], pos[2]);
+}
+
+void cots::audio::backend::null_backend::set_listener(
+    const interface::listener_state &s)
+{
+    spdlog::info("null lisenters");
+}

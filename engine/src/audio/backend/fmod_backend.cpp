@@ -26,9 +26,14 @@ bool cots::audio::backend::fmod_backend::initialize()
 
     if (!fmod_check(system_->init(
         max_voices,
-        FMOD_INIT_NORMAL,
+        FMOD_INIT_3D_RIGHTHANDED,
         nullptr), "System::init"))
         return false;
+
+    system_->set3DSettings(
+        1.0f,   // doppler scale
+        1.0f,   // distance factor: 1 unit = 1 meter
+        1.0f);  // rolloff scale
 
     // create channel groups for buses
     FMOD::ChannelGroup* master = nullptr;
@@ -78,7 +83,8 @@ void cots::audio::backend::fmod_backend::end_update()
 
 bool cots::audio::backend::fmod_backend::load_sound(
     const audio::sound_id id,
-    const std::string_view path)
+    const std::string_view path,
+    const bool positional)
 {
     if (sounds_.contains(id.value))
     {
@@ -88,17 +94,19 @@ bool cots::audio::backend::fmod_backend::load_sound(
 
     const std::string null_terminated{ path };
 
+    const FMOD_MODE mode = positional ? (FMOD_3D | FMOD_3D_LINEARROLLOFF) : FMOD_2D;
+
     FMOD::Sound* sound = nullptr;
     const auto r = system_->createSound(
         null_terminated.c_str(),
-        FMOD_DEFAULT,
+        mode,
         nullptr,
         &sound);
 
     if (!fmod_check(r, "createSound")) return false;
 
     sounds_[id.value] = sound;
-    spdlog::debug("[audio:fmod] loaded: {}", path);
+    spdlog::debug("[audio:fmod] loaded: {} ({})", path, positional ? "3D" : "2D");
     return true;
 }
 
@@ -135,6 +143,24 @@ cots::audio::handle cots::audio::backend::fmod_backend::play(
     channel->setVolume(params.volume);
     channel->setPitch (params.pitch);
     channel->setPaused(false);
+
+    if (params.positional)
+    {
+        FMOD_MODE sound_mode = 0;
+        it->second->getMode(&sound_mode);
+
+        if (sound_mode & FMOD_3D)
+        {
+            const FMOD_VECTOR pos{ params.position[0], params.position[1], params.position[2] };
+            const FMOD_VECTOR vel{ params.velocity[0], params.velocity[1], params.velocity[2] };
+            channel->set3DAttributes(&pos, &vel);
+            channel->set3DMinMaxDistance(params.min_distance, params.max_distance);
+        }
+        else
+        {
+            spdlog::warn("[audio:fmod] play: positional=true but sound loaded as 2D (id={})", id.value);
+        }
+    }
 
     const auto idx = acquire_slot();
     if (idx == 0)
@@ -213,6 +239,32 @@ void cots::audio::backend::fmod_backend::set_bus_volume(const audio::bus b, cons
 void cots::audio::backend::fmod_backend::set_bus_muted(const audio::bus b, const bool muted)
 {
     if (auto* g = group_for(b)) g->setMute(muted);
+}
+
+void cots::audio::backend::fmod_backend::set_position(
+    audio::handle handle,
+    const float pos[3],
+    const float vel[3])
+{
+    auto* ch = resolve(handle);
+    if (!ch) return;
+
+    const FMOD_VECTOR p{ pos[0], pos[1], pos[2] };
+    const FMOD_VECTOR v{ vel[0], vel[1], vel[2] };
+    ch->set3DAttributes(&p, &v);
+}
+
+void cots::audio::backend::fmod_backend::set_listener(
+    const interface::listener_state &s)
+{
+    if (!system_) return;
+
+    const FMOD_VECTOR pos{ s.position[0], s.position[1], s.position[2] };
+    const FMOD_VECTOR vel{ s.velocity[0], s.velocity[1], s.velocity[2] };
+    const FMOD_VECTOR fwd{ s.forward[0],  s.forward[1],  s.forward[2]  };
+    const FMOD_VECTOR up { s.up[0],       s.up[1],       s.up[2]       };
+
+    system_->set3DListenerAttributes(0, &pos, &vel, &fwd, &up);
 }
 
 void cots::audio::backend::fmod_backend::pause_all()

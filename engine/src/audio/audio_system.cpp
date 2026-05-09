@@ -37,10 +37,11 @@ void cots::audio::system::end_update()
 
 bool cots::audio::system::load_sound(
     const audio::sound_id id,
-    const std::string_view path) const
+    const std::string_view path,
+    const bool positional) const
 {
     COTS_ASSERT_MSG(backend_, "Audio backend not initialized");
-    return backend_->load_sound(id, path);
+    return backend_->load_sound(id, path, positional);
 }
 
 void cots::audio::system::unload_sound(const audio::sound_id id) const
@@ -94,6 +95,39 @@ void cots::audio::system::set_pitch(
 {
     COTS_ASSERT_MSG(backend_, "Audio backend not initialized");
     backend_->set_pitch(handle, pitch);
+}
+
+cots::audio::handle cots::audio::system::play_3d(
+    const audio::sound_id id,
+    const play_3d_params& param) const
+{
+    COTS_ASSERT_MSG(backend_, "Audio backend not initialized");
+
+    interface::play_params params{};
+    params.bus          = param.bus;
+    params.looping      = param.looping;
+    params.positional   = true;
+    params.position[0]  = param.pos[0];
+    params.position[1]  = param.pos[1];
+    params.position[2]  = param.pos[2];
+    params.min_distance = param.min_distance;
+    params.max_distance = param.max_distance;
+    return backend_->play(id, params);
+}
+
+void cots::audio::system::set_position(
+    const audio::handle h,
+    const float pos[3],
+    const float vel[3]) const
+{
+    COTS_ASSERT_MSG(backend_, "Audio backend not initialized");
+    backend_->set_position(h, pos, vel);
+}
+
+void cots::audio::system::set_listener(const interface::listener_state &s) const
+{
+    COTS_ASSERT_MSG(backend_, "Audio backend not initialized");
+    backend_->set_listener(s);
 }
 
 void cots::audio::system::set_bus_volume(const audio::bus b, const float v) const

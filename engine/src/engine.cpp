@@ -58,6 +58,7 @@ void cots::engine::initialize_features()
 {
     timer_      = feature::locator::resolve<utils::timer>();
     dispatcher_ = feature::locator::resolve<events::dispatcher>();
+
     //~ setup subsystems
     windows_ = feature::locator::resolve<platform::windows>();
     windows_->setup_config(reinterpret_cast<const std::byte*>(&config_manager_.windows_config()));
@@ -84,7 +85,6 @@ void cots::engine::regulate_tickable()
 {
     auto audio = feature::locator::resolve<audio::system>();
     tickable_scheduler_.register_type(std::ref(audio));
-
     tickable_scheduler_.register_type(std::ref(windows_));
     tickable_scheduler_.register_type(std::ref(dispatcher_));
 }
