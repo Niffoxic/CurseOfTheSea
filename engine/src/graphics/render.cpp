@@ -4,22 +4,58 @@
 #include "engine/graphics/hardware/device.h"
 
 #include "engine/core/cots_assert.h"
+#include "engine/graphics/hardware/fence.h"
 #include "spdlog/spdlog.h"
+
+#include <d3d12.h>
 
 cots::graphics::render::~render() = default;
 
 bool cots::graphics::render::initialize()
 {
+    //~ test device
     hardware::device test_device;
     if (!test_device.initialize())
     {
-        spdlog::error("[render] device init failed");
+        spdlog::error("device init failed");
+        return false;
+    }
+    spdlog::info("{} adapters available",
+                 test_device.adapters_info().size());
+
+    //~ test fence
+    hardware::fence test_fence;
+    if (!test_fence.initialize(test_device))
+    {
+        spdlog::error("fence init failed");
         return false;
     }
 
-    spdlog::info("[render] {} adapters available",
-                 test_device.adapters_info().size());
+    if (!test_fence.wait(0))
+    {
+        spdlog::error("fence wait failed");
+        return false;
+    }
+    spdlog::info("fence signaled");
 
+    //~ test signal advances
+    const auto target = test_fence.signal(test_device.graphics_queue());
+    spdlog::info("fence singaled to: {}", target);
+
+    if (!test_fence.wait(target))
+    {
+        spdlog::error("fence wait failed");
+        return false;
+    }
+
+    spdlog::info("wait(target) returned, completed_value={}",
+             test_fence.completed_value());
+
+    //~ timeout on a value that will never be reached
+    const bool reached = test_fence.wait(target + 100, 50);
+    spdlog::info("wait unreachable 50ms returned {}", reached);
+
+    test_fence.deinitialize();
     test_device.deinitialize();
 
     running_ = true;

@@ -105,7 +105,9 @@ void cots::graphics::hardware::device::deinitialize() noexcept
     {
         dxgi_debug->ReportLiveObjects(
             DXGI_DEBUG_ALL,
-            static_cast<DXGI_DEBUG_RLO_FLAGS>(DXGI_DEBUG_RLO_DETAIL | DXGI_DEBUG_RLO_IGNORE_INTERNAL));
+            static_cast<DXGI_DEBUG_RLO_FLAGS>(
+                DXGI_DEBUG_RLO_DETAIL | DXGI_DEBUG_RLO_IGNORE_INTERNAL
+                ));
     }
 #endif
 

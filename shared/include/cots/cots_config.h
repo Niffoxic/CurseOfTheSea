@@ -2,6 +2,8 @@
 #ifndef CURSEOFTHESEA_COTS_CONFIG_H
 #define CURSEOFTHESEA_COTS_CONFIG_H
 
+#include <cstdint>
+
 //~ Build Kinds
 #ifndef COTS_DEBUG
     #define COTS_DEBUG 0
@@ -45,5 +47,10 @@
 #endif
 
 #define COTS_HAS_PROFILER (COTS_PROFILER_LEVEL > 0)
+
+namespace cots::config
+{
+    static constexpr std::uint32_t SWAPCHAIN_BUFFER_COUNT = 2u;
+}
 
 #endif //CURSEOFTHESEA_COTS_CONFIG_H
