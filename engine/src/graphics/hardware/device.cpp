@@ -207,6 +207,12 @@ bool cots::graphics::hardware::device::is_initialized() const noexcept
     return initialized_;
 }
 
+void cots::graphics::hardware::device::refresh_outputs()
+{
+    if (!adapter_) return;
+    enumerate_outputs();
+}
+
 bool cots::graphics::hardware::device::create_internal(
     const device_create_info &info)
 {
@@ -355,5 +361,79 @@ void cots::graphics::hardware::device::enumerate_adapters()
                      adp.adapter_index, adp.name,
                      adp.is_wrap ? " (software)" : "",
                      adp.dedicated_video_memory / (1024 * 1024));
+    }
+}
+
+void cots::graphics::hardware::device::enumerate_outputs()
+{
+    outputs_info_.clear();
+    if (!adapter_) return;
+
+    Microsoft::WRL::ComPtr<IDXGIOutput> output;
+    for (UINT i = 0;
+         SUCCEEDED(adapter_->EnumOutputs(i, &output));
+         ++i)
+    {
+        Microsoft::WRL::ComPtr<IDXGIOutput6> output6;
+        if (FAILED(output.As(&output6)))
+        {
+            output.Reset();
+            continue;
+        }
+
+        DXGI_OUTPUT_DESC1 desc{};
+        if (FAILED(output6->GetDesc1(&desc)))
+        {
+            spdlog::warn("[hardware:device] IDXGIOutput6::GetDesc failed");
+            continue;
+        }
+
+        output_info entry{};
+        entry.index           = i;
+        entry.device_name     = helpers::wide_to_utf8(desc.DeviceName);
+        entry.desktop_left    = desc.DesktopCoordinates.left;
+        entry.desktop_top     = desc.DesktopCoordinates.top;
+        entry.desktop_width   = static_cast<std::uint32_t>(desc.DesktopCoordinates.right - desc.DesktopCoordinates.left);
+        entry.desktop_height  = static_cast<std::uint32_t>(desc.DesktopCoordinates.bottom - desc.DesktopCoordinates.top);
+
+        //~ get supported modes
+        constexpr DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        UINT mode_count = 0;
+        output6->GetDisplayModeList(format, 0u, &mode_count, nullptr);
+
+        if (mode_count)
+        {
+            std::vector<DXGI_MODE_DESC1> modes(mode_count);
+            output6->GetDisplayModeList1(format, 0u, &mode_count, modes.data());
+
+            entry.supported_modes.reserve(mode_count);
+            for (const auto& mode : modes)
+            {
+                entry.supported_modes.push_back({
+                    mode.Width,
+                    mode.Height,
+                    mode.RefreshRate.Numerator,
+                    mode.RefreshRate.Denominator,
+                });
+            }
+            //~ highest resolution and highest refresh found
+            entry.native_mode = entry.supported_modes.back();
+        }
+
+        //~ monitor at desktop (0,0)
+        entry.is_primary = (entry.desktop_left == 0 && entry.desktop_top == 0);
+
+        outputs_info_.push_back(std::move(entry));
+        output.Reset();
+    }
+
+    spdlog::info("[hardware:device] enumerated {} output(s)", outputs_info_.size());
+    for (const auto& o : outputs_info_)
+    {
+        spdlog::info("  output [{}] {} {}x{} @ ({},{}){}",
+                     o.index, o.device_name,
+                     o.desktop_width, o.desktop_height,
+                     o.desktop_left, o.desktop_top,
+                     o.is_primary ? " [primary]" : "");
     }
 }

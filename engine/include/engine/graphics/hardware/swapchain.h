@@ -23,8 +23,6 @@ namespace cots::graphics::hardware
         [[nodiscard]]
         bool initialize(const swapchain_create_info& info);
         void deinitialize() noexcept;
-
-
     };
 } // namespace cots::graphics::hardware
 

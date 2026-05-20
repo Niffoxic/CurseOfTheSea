@@ -120,6 +120,15 @@ namespace cots::platform
             return window_size_.as<T>();
         }
 
+        //~ setters
+        void set_style   (config::window_style style) const;
+        void set_size    (std::uint32_t width, std::uint32_t height) const;
+        void set_position(std::uint32_t x,     std::uint32_t y) const;
+        void set_title   (const std::wstring& title) const;
+        void set_tile    (const std::string&  title) const;
+        void set_debug   (const std::string&  message) const;
+        void set_debug   (const std::wstring& message) const;
+
         //~ helpers
         [[nodiscard]] HICON load_icon(const std::wstring& path, int size) const noexcept;
 
@@ -133,6 +142,8 @@ namespace cots::platform
      private:
         static constexpr auto CLASS_NAME = L"COTS";
 
+        mutable
+        std::wstring        window_title_{ L"Cots" };
         config::size<int>   window_size_    {};
         HWND                window_handle_  { nullptr };
         HINSTANCE           window_instance_{ nullptr };

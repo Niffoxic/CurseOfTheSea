@@ -26,6 +26,35 @@ namespace cots::graphics::hardware
         bool          is_wrap;
     };
 
+    struct display_format
+    {
+        std::uint32_t width;
+        std::uint32_t height;
+        std::uint32_t refresh_numerator;
+        std::uint32_t refresh_denominator;
+
+        [[nodiscard]]
+        float refresh_hz() const noexcept
+        {
+            return refresh_denominator > 0
+                ?   static_cast<float>(refresh_numerator) /
+                    static_cast<float>(refresh_denominator) : 0.f;
+        }
+    };
+
+    struct output_info
+    {
+        std::uint32_t  index;
+        std::string    device_name;
+        std::int32_t   desktop_left;
+        std::int32_t   desktop_top;
+        std::uint32_t  desktop_width;
+        std::uint32_t  desktop_height;
+        bool           is_primary;
+        display_format native_mode;
+        std::vector<display_format> supported_modes;
+    };
+
     enum class adapter_preference : std::uint8_t
     {
         high_performance = 0,
@@ -69,6 +98,12 @@ namespace cots::graphics::hardware
         [[nodiscard]] const std::vector<adapter_info>& adapters_info       () const noexcept;
         [[nodiscard]] bool                             is_initialized      () const noexcept;
 
+        [[nodiscard]] const std::vector<output_info>& outputs() const noexcept
+        {
+            return outputs_info_;
+        }
+        void refresh_outputs();
+
     private:
         bool create_internal (const device_create_info& info);
         bool pick_adapter    (const device_create_info& info,
@@ -76,6 +111,7 @@ namespace cots::graphics::hardware
 
         void destroy_internal  () noexcept;
         void enumerate_adapters();
+        void enumerate_outputs ();
 
     private:
         Microsoft::WRL::ComPtr<IDXGIFactory7>      factory_;
@@ -85,9 +121,12 @@ namespace cots::graphics::hardware
         Microsoft::WRL::ComPtr<ID3D12InfoQueue1>   info_queue_;
 
         std::vector<adapter_info>   adapters_info_;
-        adapter_info                adapter_info_ {};
-        device_create_info          last_info_    {};
-        bool                        initialized_  { false };
+        std::vector<output_info>    outputs_info_;
+
+        adapter_info                adapter_info_{};
+        device_create_info          last_info_   {};
+
+        bool                        initialized_ { false };
     };
 }
 

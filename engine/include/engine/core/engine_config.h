@@ -30,6 +30,12 @@ namespace cots::config
         }
     };
 
+    enum class window_style: std::uint8_t
+    {
+        normal      = 0, //~ Overlapped window
+        borderless  = 1, // popup
+    };
+
     struct windows
     {
         size<int>    window_size{};

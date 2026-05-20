@@ -2,7 +2,9 @@
 
 #include <filesystem>
 
-#include "../../include/engine/system/feature_locator.h"
+#include "engine/events/event_dispatcher.h"
+#include "engine/events/windows_event.h"
+#include "engine/system/feature_locator.h"
 #include "spdlog/spdlog.h"
 
 namespace cots::platform
@@ -90,6 +92,62 @@ namespace cots::platform
         return status_ == status::Quit;
     }
 
+    void windows::set_style(const config::window_style style) const
+    {
+        if (!window_handle_) return;
+
+        const DWORD dw_style = (style == config::window_style::borderless)
+            ? (WS_POPUP | WS_VISIBLE)
+            : WS_OVERLAPPEDWINDOW;
+
+        SetWindowLongPtrW(window_handle_, GWL_STYLE, dw_style);
+        SetWindowPos(window_handle_, HWND_TOP, 0, 0, 0, 0,
+                     SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
+    }
+
+    void windows::set_size(const std::uint32_t width, const std::uint32_t height) const
+    {
+        if (!window_handle_) return;
+        SetWindowPos(window_handle_, nullptr, 0, 0,
+                     static_cast<int>(width), static_cast<int>(height),
+                     SWP_NOMOVE | SWP_NOZORDER);
+    }
+
+    void windows::set_position(const std::uint32_t x, const std::uint32_t y) const
+    {
+        if (!window_handle_) return;
+        SetWindowPos(window_handle_, nullptr, x, y, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER);
+    }
+
+    void windows::set_title(const std::wstring& title) const
+    {
+        if (!window_handle_) return;
+        window_title_ = title;
+        SetWindowTextW(window_handle_, title.c_str());
+    }
+
+    void windows::set_tile(const std::string &title) const
+    {
+        if (!window_handle_) return;
+        window_title_ = std::wstring(title.begin(), title.end());
+        SetWindowTextA(window_handle_, title.c_str());
+    }
+
+    void windows::set_debug(const std::string &message) const
+    {
+        if (!window_handle_) return;
+        const auto bar = std::string(window_title_.begin(), window_title_.end()) + " - " + message;
+        SetWindowTextA(window_handle_, bar.c_str());
+    }
+
+    void windows::set_debug(const std::wstring &message) const
+    {
+        if (!window_handle_) return;
+        const auto bar = window_title_ + L" - " + message;
+        SetWindowTextW(window_handle_, bar.c_str());
+    }
+
     HICON windows::load_icon(const std::wstring &path, const int size) const noexcept
     {
         return static_cast<HICON>(LoadImageW(
@@ -173,11 +231,36 @@ namespace cots::platform
         HWND hwnd, const UINT message,
         const WPARAM w_param, const LPARAM l_param)
     {
-        if (keyboard.poll_messages(message, w_param, l_param)) return 0;
-        if (mouse   .poll_messages(message, w_param, l_param)) return 0;
+        keyboard.poll_messages(message, w_param, l_param);
+        mouse   .poll_messages(message, w_param, l_param);
 
         switch (message)
         {
+        case WM_SIZE:
+        {
+            const auto width  = LOWORD(l_param);
+            const auto height = HIWORD(l_param);
+
+            if (w_param == SIZE_MINIMIZED)
+            {
+                screen_state_ |= screen_state::minimized;
+            }
+            else
+            {
+                screen_state_ &= ~screen_state::minimized;
+                window_size_.width  = width;
+                window_size_.height = height;
+
+                //~ publish event for renderer
+                if (const auto d = feature::locator::resolve<events::dispatcher>())
+                {
+                    d->enqueue<events::window_resized>(
+                        static_cast<std::uint32_t>(width),
+                        static_cast<std::uint32_t>(height));
+                }
+            }
+            return 0;
+        }
         case WM_ACTIVATE:
         {
             if (LOWORD(w_param) == WA_INACTIVE)

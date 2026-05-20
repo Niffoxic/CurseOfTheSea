@@ -3,6 +3,7 @@
 #define CURSEOFTHESEA_GRAPHICS_EVENT_H
 
 #include <wrl/client.h>
+#include <cstdint>
 
 namespace cots::events::graphics
 {

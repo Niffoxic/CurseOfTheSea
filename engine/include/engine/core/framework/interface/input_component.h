@@ -18,7 +18,7 @@ namespace cots::interfaces
         [[nodiscard]] virtual bool initialize  (const input_initialize_info& info)  = 0;
                       virtual void deinitialize()                                   = 0;
 
-        [[nodiscard]] virtual bool poll_messages(
+        virtual bool poll_messages(
             UINT message,
             WPARAM w_param,
             LPARAM l_param) = 0;

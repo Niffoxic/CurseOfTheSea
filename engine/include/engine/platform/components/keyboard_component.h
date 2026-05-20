@@ -86,7 +86,7 @@ namespace cots::platform
         void end_update  () override;
 
 
-        [[nodiscard]] bool poll_messages(
+        bool poll_messages(
             UINT message, WPARAM w_param,
             LPARAM l_param) override;
 
