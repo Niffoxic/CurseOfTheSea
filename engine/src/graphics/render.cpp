@@ -13,6 +13,7 @@
 #include "engine/events/windows_event.h"
 
 #include <d3d12.h>
+#include <dxgi1_6.h>
 
 #include "engine/graphics/hardware/command_context.h"
 
@@ -53,41 +54,18 @@ bool cots::graphics::render::initialize()
         spdlog::error("swapchain init failed");
         return false;
     }
-
-    //~ test command context
-    hardware::command_context test_ctx;
-    if (!test_ctx.initialize(device_))
+    //~ initialize contexts
+    for (std::uint32_t i = 0; i < hardware::frame_count; ++i)
     {
-        spdlog::error("cmd context init failed");
-        return false;
+        if (not frame_.contexts[i].initialize(device_, hardware::command_list_type::direct))
+        {
+            spdlog::error("command list init failed");
+            return false;
+        }
     }
-    //~ reset/close cycle
-    if (not test_ctx.reset())
-    {
-        spdlog::error("reset failed");
-        return false;
-    }
-    spdlog::info("[cmd-test] reset ok, list open");
-
-    if (not test_ctx.close())
-    {
-        spdlog::error("close failed");
-        return false;
-    }
-    spdlog::info("[cmd-test] close ok");
-
-    //~ must work without GPU sync since we didn't submit anything
-    if (!test_ctx.reset())
-    {
-        spdlog::error("2nd reset failed"); return false;
-    }
-    if (!test_ctx.close())
-    {
-        spdlog::error("2nd close failed"); return false;
-    }
-    spdlog::info("[cmd-test] second cycle ok");
-
-    test_ctx.deinitialize();
+    frame_.fence_values.fill(0);
+    frame_.index = 0u;
+    frame_.submit_lists.reserve(hardware::flight_count);
 
     running_ = true;
     render_thread_ = std::thread(&render::render_thread_main, this);
@@ -153,52 +131,109 @@ void cots::graphics::render::render_thread_main()
 {
     spdlog::info("render thread started");
     SetThreadDescription(GetCurrentThread(), L"Cots Renderer");
+    frame_.start_time_ = std::chrono::steady_clock::now();
 
-    while (running_.load(std::memory_order_acquire))
+    while (running_.load(std::memory_order_relaxed))
     {
-        //~ drain commands
-        {
-            std::lock_guard lock(command_mutex_);
-            if (has_pending_resize_)
-            {
-                const bool status = swapchain_.resize(
-                    device_,
-                    event_pending_resize_.width,
-                    event_pending_resize_.height
-                );
-                if (not status) spdlog::error("swapchain resize failed");
-                has_pending_resize_ = false;
-            }
-        }
+        process_pending_commands();
 
         //~ occlusion check
         if (!swapchain_.check_occlusion())
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
 
-        begin_frame();
-        //~ TODO: Record Cmds
-        end_frame();
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        draw_frame();
+    }
+    if (not fence_.wait(fence_.last_signaled_value())) [[unlikely]]
+    {
+        spdlog::error("[very unexpected] fence wait failed");
     }
     spdlog::info("render thread stopped");
 }
 
-void cots::graphics::render::record_frame()
-{
-
-}
-
-void cots::graphics::render::submit_frame()
-{
-
-}
-
 void cots::graphics::render::draw_frame()
 {
+    const std::uint32_t frame = frame_.index;
+    fence_.wait(frame_.fence_values[frame]);
 
+    //~ seam record and then serial submit
+    frame_.submit_lists.clear();
+    record_frame(frame, frame_.submit_lists);
+    submit_frame(frame_.submit_lists);
+
+    //~ present and fence this slot
+    swapchain_.present(0);
+    frame_.fence_values[frame] = fence_.signal(device_.graphics_queue());
+    frame_.step();
+}
+
+void cots::graphics::render::record_frame(
+    const std::uint32_t frame,
+    std::vector<ID3D12CommandList *> &out
+)
+{
+    auto& ctx = frame_.contexts[frame];
+    if (!ctx.reset()) return;
+
+    auto*      backbuffer = swapchain_.current_backbuffer();
+    const auto rtv        = swapchain_.current_rtv_handle();
+
+    ctx.transition(backbuffer,
+                   hardware::resource_state::present,
+                   hardware::resource_state::render_target);
+
+    ctx.set_render_target(rtv);
+
+    //~ animated clear for test
+    const float t = std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - frame_.start_time_).count();
+    const float color[4] =
+    {
+        0.5f + 0.5f * std::sin(t * 0.7f),
+        0.5f + 0.5f * std::sin(t * 0.9f + 2.0f),
+        0.5f + 0.5f * std::sin(t * 1.3f + 4.0f),
+        1.0f
+    };
+    ctx.clear_render_target(rtv, color);
+
+    ctx.transition(backbuffer,
+                   hardware::resource_state::render_target,
+                   hardware::resource_state::present);
+
+    if (not ctx.close()) [[unlikely]]
+    {
+        spdlog::error("command list close failed");
+    }
+    out.push_back(ctx.list());   //~ one list now, many later
+}
+
+void cots::graphics::render::submit_frame(const std::vector<ID3D12CommandList*> &lists) const
+{
+    //~ serial submission
+    if (lists.empty()) return;
+
+    device_.graphics_queue()->ExecuteCommandLists(
+        static_cast<UINT>(lists.size()),
+        lists.data()
+    );
+}
+
+void cots::graphics::render::process_pending_commands()
+{
+    //~ drain commands
+    std::lock_guard lock(command_mutex_);
+    if (has_pending_resize_)
+    {
+        const bool status = swapchain_.resize(
+            device_,
+            event_pending_resize_.width,
+            event_pending_resize_.height
+        );
+        if (not status) spdlog::error("swapchain resize failed");
+        has_pending_resize_ = false;
+    }
 }
 
 void cots::graphics::render::subscribe_events()
