@@ -35,7 +35,7 @@ namespace cots::graphics::shaders
         [[nodiscard]]
         bool initialize  (std::unique_ptr<shader_storage> storage);
         void deinitialize() noexcept;   //~ flushes
-        void flush       ();
+        void flush       () const;
 
         //~ reads file at path compiles if missing or stale returns cached dxil view
         [[nodiscard]] shader_bytecode get_or_compile(
@@ -44,11 +44,13 @@ namespace cots::graphics::shaders
             shader_stage     stage
         );
 
+        void clear();                       //~ wipe in-memory and on-disk force cold
+        bool recompile(std::uint64_t key);  //~ force one entry stale and rebuild (0 = all)
+
     private:
         shader_compiler                  compiler_;
         std::unique_ptr<shader_storage>  storage_;
         cache_map                        entries_;
-        bool                             dirty_ { false };
     };
 } // namespace cots::graphics::shaders
 

@@ -3,30 +3,14 @@
 
 #include <cots/cots_config.h>
 #include <spdlog/spdlog.h>
-#include <fstream>
-#include <sstream>
+
+#include "engine/utils/helpers.h"
 
 namespace cots::graphics::shaders
 {
     namespace
     {
-        std::uint64_t fnv1a(std::string_view s) noexcept
-        {
-            std::uint64_t h = 0xcbf29ce484222325ull;
-            for (const unsigned char c : s) { h ^= c; h *= 0x100000001b3ull; }
-            return h;
-        }
-
-        const char* cfg_tag() noexcept
-        {
-#if COTS_DEBUG
-            return "dbg";
-#else
-            return "rel";
-#endif
-        }
-
-        const char* stage_tag(shader_stage s) noexcept
+        const char* stage_tag(const shader_stage s) noexcept
         {
             switch (s)
             {
@@ -35,15 +19,6 @@ namespace cots::graphics::shaders
                 case shader_stage::compute: return "cs";
                 default:                    return "xx";
             }
-        }
-
-        bool read_file(std::string_view path, std::string& out)
-        {
-            std::ifstream f(std::string(path), std::ios::binary);
-            if (!f.is_open()) return false;
-            std::ostringstream ss; ss << f.rdbuf();
-            out = ss.str();
-            return true;
         }
     }
 
@@ -66,33 +41,34 @@ namespace cots::graphics::shaders
         compiler_.deinitialize();
     }
 
-    void shader_cache::flush()
+    void shader_cache::flush() const
     {
-        if (dirty_ && storage_)
+        if (storage_)
         {
-            storage_->store_all(entries_);
-            dirty_ = false;
+            (void)storage_->store_all(entries_);
         }
     }
 
     shader_bytecode shader_cache::get_or_compile(
-        std::string_view path, std::string_view entry, shader_stage stage)
+        std::string_view path,
+        const std::string_view entry,
+        const shader_stage stage)
     {
         std::string source;
-        if (!read_file(path, source))
+        if (!helpers::read_file(path, source))
         {
             spdlog::error("[shader] cannot read {}", path);
             return {};
         }
 
-        //~ slot = identifier hash (stable per variant); source_hash validates freshness
+        //~ slot identifier hash
         std::string identifier;
         identifier.reserve(path.size() + 16);
         identifier.append(path).append(":").append(entry).append(":")
-                  .append(stage_tag(stage)).append(":").append(cfg_tag());
+                  .append(stage_tag(stage)).append(":").append(helpers::cfg_tag());
 
-        const std::uint64_t key  = fnv1a(identifier);
-        const std::uint64_t shash = fnv1a(source);
+        const std::uint64_t key   = helpers::fnv1a(identifier);
+        const std::uint64_t shash = helpers::fnv1a(source);
 
         if (const auto it = entries_.find(key);
             it != entries_.end() && it->second.source_hash == shash)
@@ -101,7 +77,7 @@ namespace cots::graphics::shaders
             return { it->second.dxil.data(), it->second.dxil.size() };
         }
 
-        //~ miss or stale -> compile
+        //~ miss or stale then compile
         spdlog::info("[shader] compiling: {}", identifier);
         std::vector<std::uint8_t> dxil;
         const shader_compile_desc desc{
@@ -121,8 +97,34 @@ namespace cots::graphics::shaders
         slot.source_hash = shash;
         slot.identifier  = identifier;
         slot.dxil        = std::move(dxil);
-        dirty_ = true;
+
+        if (storage_ && !storage_->store_one(slot, entries_))
+            spdlog::warn("[shader] store_one failed for {}", identifier);
 
         return { slot.dxil.data(), slot.dxil.size() };
+    }
+
+    void shader_cache::clear()
+    {
+        entries_.clear();
+        if (storage_) (void)storage_->store_all(entries_);   //~ writes empty archive
+        spdlog::info("[shader] cache cleared");
+    }
+
+    bool shader_cache::recompile(const std::uint64_t key)
+    {
+        if (key == 0)
+        {
+            //~ force-stale everything
+            for (auto& [k, e] : entries_) e.source_hash = 0;
+            spdlog::info("[shader] all shaders marked for recompile");
+            return true;
+        }
+        if (const auto it = entries_.find(key); it != entries_.end())
+        {
+            it->second.source_hash = 0;   //~ there will be a rebuild on next get
+            return true;
+        }
+        return false;
     }
 } // namespace cots::graphics::shaders

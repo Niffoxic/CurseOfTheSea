@@ -16,6 +16,11 @@ namespace cots::graphics::shaders
         [[nodiscard]] bool load_all (cache_map& out)      override;
         [[nodiscard]] bool store_all(const cache_map& in) override;
 
+        [[nodiscard]] bool store_one(const shader_cache_entry&, const cache_map& full) override
+        {
+            return store_all(full);
+        }
+
     private:
         std::string path_;
     };

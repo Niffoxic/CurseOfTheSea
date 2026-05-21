@@ -25,6 +25,11 @@
 #include "engine/graphics/passes/clear_pass.h"
 #include "engine/graphics/passes/present_pass.h"
 
+//~ test
+#include "engine/graphics/shaders/storage/binary_storage.h"
+#include "engine/graphics/shaders/storage/json_storage.h"
+#include <cots/cots_config.h>
+
 cots::graphics::render::~render() = default;
 
 bool cots::graphics::render::initialize()
@@ -109,9 +114,11 @@ void cots::graphics::render::render_thread_main()
         spdlog::error("[very unexpected] fence wait failed");
     }
 
-    fence_    .deinitialize();
-    swapchain_.deinitialize();
-    device_   .deinitialize();
+    //~ destroy resources
+    shader_cache_.deinitialize();
+    fence_       .deinitialize();
+    swapchain_   .deinitialize();
+    device_      .deinitialize();
 
     spdlog::info("render thread stopped");
 }
@@ -161,6 +168,34 @@ bool cots::graphics::render::initialize_render_thread()
     frame_.fence_values.fill(0);
     frame_.index = 0u;
     frame_.submit_lists.reserve(hardware::max_submit_lists);
+
+    //~ Test
+    //~ json in debug packed binary otherwise
+#if COTS_DEBUG
+    auto storage = std::make_unique<shaders::json_shader_storage>("compiled/shader_cache.json");
+#else
+    auto storage = std::make_unique<shaders::binary_shader_storage>("compiled/shader_cache.bin");
+#endif
+    if (not shader_cache_.initialize(std::move(storage)))
+    {
+        spdlog::error("shader cache init failed");
+        return false;
+    }
+
+    //~ test compile
+    {
+        const auto vs = shader_cache_.get_or_compile(
+            "assets/shaders/triangle.hlsl",
+            "VSMain",
+            shaders::shader_stage::vertex
+        );
+        const auto ps = shader_cache_.get_or_compile(
+            "assets/shaders/triangle.hlsl",
+            "PSMain",
+            shaders::shader_stage::pixel
+        );
+        spdlog::info("[shader-test] vs={} bytes, ps={} bytes", vs.size, ps.size);
+    }
 
     if (not build_passes()) return false;
 
@@ -254,20 +289,29 @@ void cots::graphics::render::process_pending_commands()
         pending_ = {};
     }
 
-    COTS_PROFILE_SCOPE("render::swapchain_command");
+    COTS_PROFILE_SCOPE("render::pending_commands");
 
-    const std::uint64_t flush = fence_.signal(device_.graphics_queue());
-    if (not fence_.wait(flush))
-        spdlog::error("[render] gpu flush before swapchain change failed");
+    //~ shader ops are CPU-only no GPU flush needed
+    if (cmd.shader_save)   shader_cache_.flush();
+    if (cmd.shader_clear)  shader_cache_.clear();
+    if (cmd.shader_reload) shader_cache_.recompile(cmd.shader_reload_key);
 
-    bool ok = true;
-    if (cmd.change_mode)  ok = swapchain_.set_display_mode (device_, cmd.mode) && ok;
-    if (cmd.set_win_size) ok = swapchain_.set_windowed_size(device_, cmd.win_w, cmd.win_h) && ok;
-    if (cmd.resize)       ok = swapchain_.resize           (device_, cmd.resize_w, cmd.resize_h) && ok;
-    if (not ok) spdlog::error("[render] swapchain command(s) failed");
+    //~ swapchain ops need the GPU idle first
+    if (cmd.change_mode || cmd.set_win_size || cmd.resize)
+    {
+        const std::uint64_t flush = fence_.signal(device_.graphics_queue());
+        if (not fence_.wait(flush))
+            spdlog::error("[render] gpu flush before swapchain change failed");
 
-    frame_.fence_values.fill(flush);
-    frame_.index = 0u;
+        bool ok = true;
+        if (cmd.change_mode)  ok = swapchain_.set_display_mode (device_, cmd.mode) && ok;
+        if (cmd.set_win_size) ok = swapchain_.set_windowed_size(device_, cmd.win_w, cmd.win_h) && ok;
+        if (cmd.resize)       ok = swapchain_.resize           (device_, cmd.resize_w, cmd.resize_h) && ok;
+        if (not ok) spdlog::error("[render] swapchain command(s) failed");
+
+        frame_.fence_values.fill(flush);
+        frame_.index = 0u;
+    }
 }
 
 bool cots::graphics::render::build_passes()
@@ -303,17 +347,23 @@ void cots::graphics::render::submit_frame(const std::vector<ID3D12CommandList*> 
 void cots::graphics::render::subscribe_events()
 {
     const auto d = feature::locator::resolve<events::dispatcher>();
-    d->subscribe<events::window_resized,                       &render::on_window_resized>(*this);
-    d->subscribe<events::swapchain::set_display_mode,  &render::on_set_display_mode>(*this);
+    d->subscribe<events::window_resized,               &render::on_window_resized>   (*this);
+    d->subscribe<events::swapchain::set_display_mode,  &render::on_set_display_mode> (*this);
     d->subscribe<events::swapchain::set_windowed_size, &render::on_set_windowed_size>(*this);
+    d->subscribe<events::shader::save,                 &render::on_shader_save>      (*this);
+    d->subscribe<events::shader::clear,                &render::on_shader_clear>     (*this);
+    d->subscribe<events::shader::reload,               &render::on_shader_reload>    (*this);
 }
 
 void cots::graphics::render::unsubscribe_events()
 {
     const auto d = feature::locator::resolve<events::dispatcher>();
-    d->unsubscribe<events::window_resized,                       &render::on_window_resized>(*this);
-    d->unsubscribe<events::swapchain::set_display_mode,  &render::on_set_display_mode>(*this);
+    d->unsubscribe<events::window_resized,               &render::on_window_resized>   (*this);
+    d->unsubscribe<events::swapchain::set_display_mode,  &render::on_set_display_mode> (*this);
     d->unsubscribe<events::swapchain::set_windowed_size, &render::on_set_windowed_size>(*this);
+    d->unsubscribe<events::shader::save,                 &render::on_shader_save>      (*this);
+    d->unsubscribe<events::shader::clear,                &render::on_shader_clear>     (*this);
+    d->unsubscribe<events::shader::reload,               &render::on_shader_reload>    (*this);
 }
 
 void cots::graphics::render::on_window_resized(const events::window_resized &event)
@@ -337,6 +387,25 @@ void cots::graphics::render::on_set_windowed_size(const events::swapchain::set_w
     pending_.set_win_size = true;
     pending_.win_w = event.width;
     pending_.win_h = event.height;
+}
+
+void cots::graphics::render::on_shader_save(const events::shader::save& event)
+{
+    std::lock_guard lock(command_mutex_);
+    pending_.shader_save = true;
+}
+
+void cots::graphics::render::on_shader_clear(const events::shader::clear& event)
+{
+    std::lock_guard lock(command_mutex_);
+    pending_.shader_clear = true;
+}
+
+void cots::graphics::render::on_shader_reload(const events::shader::reload& event)
+{
+    std::lock_guard lock(command_mutex_);
+    pending_.shader_reload     = true;
+    pending_.shader_reload_key = event.key;
 }
 
 void cots::graphics::render::publish_snapshot()

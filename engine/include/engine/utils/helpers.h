@@ -5,6 +5,8 @@
 #include <string>
 #include <windows.h>
 #include <d3dx12/d3dx12.h>
+#include <fstream>
+#include <sstream>
 
 #include "engine/graphics/hardware/types.h"
 
@@ -146,6 +148,32 @@ namespace cots::helpers
         }
         return out;
     }
+
+    inline std::uint64_t fnv1a(const std::string_view s) noexcept
+    {
+        std::uint64_t h = 0xcbf29ce484222325ull;
+        for (const unsigned char c : s) { h ^= c; h *= 0x100000001b3ull; }
+        return h;
+    }
+
+    inline const char* cfg_tag() noexcept
+    {
+#if COTS_DEBUG
+        return "dbg";
+#else
+        return "rel";
+#endif
+    }
+
+    inline bool read_file(const std::string_view path, std::string& out)
+    {
+        std::ifstream f(std::string(path), std::ios::binary);
+        if (!f.is_open()) return false;
+        std::ostringstream ss; ss << f.rdbuf();
+        out = ss.str();
+        return true;
+    }
+
 } // namespace cots::helpers
 
 #endif //CURSEOFTHESEA_HELPERS_H

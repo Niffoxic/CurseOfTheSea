@@ -3,7 +3,6 @@
 
 #include <cots/cots_config.h>
 #include <spdlog/spdlog.h>
-#include <dxcapi.h>
 #include <string>
 
 #include "engine/utils/helpers.h"

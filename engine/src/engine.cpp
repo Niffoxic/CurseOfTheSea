@@ -63,7 +63,7 @@ float cots::engine::delta_time() const noexcept
 
 void cots::engine::initialize_features()
 {
-    timer_      = feature::locator::resolve<utils::timer>      ();
+    timer_      = feature::locator::resolve<utils::timer>();
 
     //~ setup subsystems
     windows_ = feature::locator::resolve<platform::windows>();
@@ -152,6 +152,12 @@ void cots::engine::test_debug_input() const
     if (kb.pressed('1')) dispatcher->enqueue<req::set_windowed_size>(1280u, 720u);
     if (kb.pressed('2')) dispatcher->enqueue<req::set_windowed_size>(1600u, 900u);
     if (kb.pressed('3')) dispatcher->enqueue<req::set_windowed_size>(1920u, 1080u);
+
+    //~ shader event tests
+    namespace sh = events::shader;
+    if (kb.pressed(VK_F5)) dispatcher->enqueue<sh::reload>(std::uint64_t{0});
+    if (kb.pressed(VK_F6)) dispatcher->enqueue<sh::save>();
+    if (kb.pressed(VK_F7)) dispatcher->enqueue<sh::clear>();
 }
 
 void cots::engine::test_fps() const

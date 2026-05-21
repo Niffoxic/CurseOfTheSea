@@ -8,7 +8,7 @@
 
 namespace cots::events
 {
-    struct device
+    namespace device
     {
         struct creation_attempted{};
 
@@ -27,7 +27,7 @@ namespace cots::events
         {
             HRESULT removal_reason;
         };
-    }; //~ device events
+    } //~ namespace device
 
     namespace swapchain
     {
@@ -61,7 +61,30 @@ namespace cots::events
             std::uint32_t width;
             std::uint32_t height;
         };
-    }
+    } // swapchain
+
+    namespace shader
+    {
+        struct save  {};                     // flush cache to disk now
+        struct reload{ std::uint64_t key; }; // recompile one
+        struct clear {};                     // wipe cache force cold
+
+        //~ notifications
+        struct compiled
+        {
+            std::uint64_t key; bool from_cache; std::uint32_t bytes;
+        };
+
+        struct saved
+        {
+            std::uint32_t count;
+        };
+
+        struct failed
+        {
+            std::uint64_t key; //~ compile error
+        };
+    } // namespace shader
 
 } // namespace cots::events::graphics
 

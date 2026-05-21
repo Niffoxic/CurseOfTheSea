@@ -28,6 +28,10 @@ namespace cots::graphics::shaders
         //~ cold cache
         [[nodiscard]] virtual bool load_all (cache_map& out)       = 0;
         [[nodiscard]] virtual bool store_all(const cache_map& in)  = 0;
+
+        //~ durably persist a single entry right after compile
+        [[nodiscard]] virtual bool store_one(const shader_cache_entry& entry,
+                                             const cache_map& full) = 0;
     };
 } // namespace cots::graphics::shaders
 

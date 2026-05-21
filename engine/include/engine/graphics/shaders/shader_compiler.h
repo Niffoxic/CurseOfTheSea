@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 #include <wrl/client.h>
+#include <dxcapi.h>
 
 struct IDxcUtils;
 struct IDxcCompiler3;
