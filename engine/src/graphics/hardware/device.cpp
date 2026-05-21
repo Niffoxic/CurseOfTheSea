@@ -7,6 +7,7 @@
 
 #include <d3d12.h>
 #include <dxgi1_6.h>
+#include <D3D12MemAlloc.h>
 #include <dxgidebug.h>
 
 #include "engine/utils/helpers.h"
@@ -190,6 +191,11 @@ ID3D12CommandQueue * cots::graphics::hardware::device::graphics_queue() const no
     return graphics_queue_.Get();
 }
 
+D3D12MA::Allocator * cots::graphics::hardware::device::allocator() const noexcept
+{
+    return allocator_;
+}
+
 const cots::graphics::hardware::adapter_info&
     cots::graphics::hardware::device::current_adapter_info() const noexcept
 {
@@ -273,6 +279,17 @@ bool cots::graphics::hardware::device::create_internal(
 
     graphics_queue_->SetName(L"COTS Graphics Queue");
 
+    //~ create memory allocator
+    D3D12MA::ALLOCATOR_DESC alloc_desc{};
+    alloc_desc.pDevice  = device_.Get();
+    alloc_desc.pAdapter = adapter_.Get();
+
+    if (FAILED(D3D12MA::CreateAllocator(&alloc_desc, &allocator_)))
+    {
+        spdlog::error("[hardware:device] D3D12MA::CreateAllocator failed");
+        return false;
+    }
+
     return true;
 }
 
@@ -333,6 +350,12 @@ bool cots::graphics::hardware::device::pick_adapter(
 
 void cots::graphics::hardware::device::destroy_internal() noexcept
 {
+    if (allocator_)
+    {
+        allocator_->Release();
+        allocator_ = nullptr;
+    }
+
     graphics_queue_.Reset();
     info_queue_    .Reset();
     device_        .Reset();

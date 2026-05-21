@@ -28,6 +28,7 @@ add_executable(engine
         src/graphics/shaders/shader_compiler.cpp
         src/graphics/shaders/storage/binary_storage.cpp
         src/graphics/shaders/storage/json_storage.cpp
+        src/graphics/hardware/buffer_manager.cpp
 )
 
 cots_apply_compile_flags(engine)
@@ -176,3 +177,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 target_link_libraries(engine PRIVATE nlohmann_json::nlohmann_json)
+
+# D3D12 Memory Allocator
+FetchContent_Declare(
+        d3d12ma
+        GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator.git
+        GIT_TAG v3.1.0
+        GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(d3d12ma)
+target_link_libraries(engine PRIVATE D3D12MemoryAllocator)

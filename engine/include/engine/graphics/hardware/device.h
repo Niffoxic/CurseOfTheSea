@@ -14,6 +14,8 @@ struct ID3D12CommandQueue;
 struct ID3D12InfoQueue1;
 struct IDXGIAdapter1;
 
+namespace D3D12MA { class Allocator; }
+
 namespace cots::graphics::hardware
 {
     struct adapter_info
@@ -95,6 +97,7 @@ namespace cots::graphics::hardware
         [[nodiscard]] ID3D12Device14*     d3d12_device  () const noexcept;
         [[nodiscard]] IDXGIFactory7*      dxgi_factory  () const noexcept;
         [[nodiscard]] ID3D12CommandQueue* graphics_queue() const noexcept;
+        [[nodiscard]] D3D12MA::Allocator* allocator     () const noexcept;
 
         [[nodiscard]] const adapter_info&              current_adapter_info() const noexcept;
         [[nodiscard]] const std::vector<adapter_info>& adapters_info       () const noexcept;
@@ -122,13 +125,14 @@ namespace cots::graphics::hardware
         Microsoft::WRL::ComPtr<ID3D12CommandQueue> graphics_queue_;
         Microsoft::WRL::ComPtr<ID3D12InfoQueue1>   info_queue_;
 
-        std::vector<adapter_info>   adapters_info_;
-        std::vector<output_info>    outputs_info_;
+        D3D12MA::Allocator*       allocator_ { nullptr };
+        std::vector<adapter_info> adapters_info_;
+        std::vector<output_info>  outputs_info_;
 
-        adapter_info                adapter_info_{};
-        device_create_info          last_info_   {};
+        adapter_info       adapter_info_{};
+        device_create_info last_info_   {};
 
-        bool                        initialized_ { false };
+        bool initialized_ { false };
     };
 }
 
