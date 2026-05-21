@@ -222,6 +222,12 @@ bool cots::graphics::hardware::device::create_internal(
         return false;
     }
 
+#if defined(_DEBUG)
+    Microsoft::WRL::ComPtr<ID3D12Debug> debug;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))
+        debug->EnableDebugLayer();
+#endif
+
     COTS_DX_THROW_IF_FAILED_MSG(
         D3D12CreateDevice(adapter_.Get(),
                           D3D_FEATURE_LEVEL_12_0,

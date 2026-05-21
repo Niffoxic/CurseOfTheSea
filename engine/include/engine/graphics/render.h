@@ -55,8 +55,9 @@ namespace cots::graphics
         const hardware::fence&     fence    () const noexcept;
 
     private:
-        void render_thread_main ();
-        void draw_frame         ();
+        void render_thread_main      ();
+        bool initialize_render_thread();
+        void draw_frame              ();
 
         void record_frame(std::uint32_t frame, std::vector<ID3D12CommandList*>& out);
         void submit_frame(const std::vector<ID3D12CommandList*>& lists) const;

@@ -21,52 +21,6 @@ cots::graphics::render::~render() = default;
 
 bool cots::graphics::render::initialize()
 {
-    subscribe_events();
-
-    //~ initialize device
-    if (not device_.initialize())
-    {
-        spdlog::error("device init failed");
-        return false;
-    }
-
-    //~ initialize fence
-    if (not fence_.initialize(device_))
-    {
-        spdlog::error("fence init failed");
-        return false;
-    }
-
-    //~ initialize swapchain
-    const auto windows = feature::locator::resolve<platform::windows>();
-    const auto size = windows->get_window_size<std::uint32_t>();
-
-    hardware::swapchain_create_info swapchain_info{};
-    swapchain_info.allow_tearing = true;
-    swapchain_info.width         = size.width;
-    swapchain_info.height        = size.height;
-    swapchain_info.mode          = hardware::display_mode::windowed;
-    swapchain_info.frame_count   = 3;
-    swapchain_info.window_handle = windows->get_window_handle();
-
-    if (not swapchain_.initialize(device_, swapchain_info))
-    {
-        spdlog::error("swapchain init failed");
-        return false;
-    }
-    //~ initialize contexts
-    for (std::uint32_t i = 0; i < hardware::frame_count; ++i)
-    {
-        if (not frame_.contexts[i].initialize(device_, hardware::command_list_type::direct))
-        {
-            spdlog::error("command list init failed");
-            return false;
-        }
-    }
-    frame_.fence_values.fill(0);
-    frame_.index = 0u;
-    frame_.submit_lists.reserve(hardware::flight_count);
-
     running_ = true;
     render_thread_ = std::thread(&render::render_thread_main, this);
     return true;
@@ -79,11 +33,6 @@ void cots::graphics::render::deinitialize() noexcept
     if (render_thread_.joinable())
         render_thread_.join();
 
-    fence_    .deinitialize();
-    swapchain_.deinitialize();
-    device_   .deinitialize();
-
-    unsubscribe_events();
     spdlog::info(("Renderer deinitialized"));
 }
 
@@ -129,6 +78,13 @@ const cots::graphics::hardware::fence & cots::graphics::render::fence() const no
 
 void cots::graphics::render::render_thread_main()
 {
+    if (not initialize_render_thread())
+    {
+        running_ = false;
+        spdlog::error("render thread init failed");
+        return;
+    }
+
     spdlog::info("render thread started");
     SetThreadDescription(GetCurrentThread(), L"Cots Renderer");
     frame_.start_time_ = std::chrono::steady_clock::now();
@@ -150,7 +106,63 @@ void cots::graphics::render::render_thread_main()
     {
         spdlog::error("[very unexpected] fence wait failed");
     }
+
+    fence_    .deinitialize();
+    swapchain_.deinitialize();
+    device_   .deinitialize();
+
+    unsubscribe_events();
     spdlog::info("render thread stopped");
+}
+
+bool cots::graphics::render::initialize_render_thread()
+{
+ subscribe_events();
+
+    //~ initialize device
+    if (not device_.initialize())
+    {
+        spdlog::error("device init failed");
+        return false;
+    }
+
+    //~ initialize fence
+    if (not fence_.initialize(device_))
+    {
+        spdlog::error("fence init failed");
+        return false;
+    }
+
+    //~ initialize swapchain
+    const auto windows = feature::locator::resolve<platform::windows>();
+    const auto size = windows->get_window_size<std::uint32_t>();
+
+    hardware::swapchain_create_info swapchain_info{};
+    swapchain_info.allow_tearing = true;
+    swapchain_info.width         = size.width;
+    swapchain_info.height        = size.height;
+    swapchain_info.mode          = hardware::display_mode::windowed;
+    swapchain_info.frame_count   = 3;
+    swapchain_info.window_handle = windows->get_window_handle();
+
+    if (not swapchain_.initialize(device_, swapchain_info))
+    {
+        spdlog::error("swapchain init failed");
+        return false;
+    }
+    //~ initialize contexts
+    for (std::uint32_t i = 0; i < hardware::frame_count; ++i)
+    {
+        if (not frame_.contexts[i].initialize(device_, hardware::command_list_type::direct))
+        {
+            spdlog::error("command list init failed");
+            return false;
+        }
+    }
+    frame_.fence_values.fill(0);
+    frame_.index = 0u;
+    frame_.submit_lists.reserve(hardware::flight_count);
+    return true;
 }
 
 void cots::graphics::render::draw_frame()
