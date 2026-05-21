@@ -11,7 +11,7 @@ namespace cots::graphics::hardware
 
     enum class command_list_type: std::uint8_t
     {
-        graphics,
+        direct,
         compute,
         copy
     };
@@ -20,9 +20,9 @@ namespace cots::graphics::hardware
     {
         switch(type)
         {
-        case command_list_type::graphics: return "graphics";
-        case command_list_type::compute:  return "compute";
-        case command_list_type::copy:     return "copy";
+        case command_list_type::direct:  return "direct";
+        case command_list_type::compute: return "compute";
+        case command_list_type::copy:    return "copy";
         default: return "unknown";
         }
     }

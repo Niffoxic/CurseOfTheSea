@@ -20,6 +20,7 @@ add_executable(engine
         src/graphics/utils/exception.cpp
         src/graphics/hardware/swapchain.cpp
         src/graphics/hardware/fence.cpp
+        src/graphics/hardware/command_context.cpp
 )
 
 cots_apply_compile_flags(engine)

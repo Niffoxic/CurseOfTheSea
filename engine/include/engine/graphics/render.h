@@ -52,8 +52,9 @@ namespace cots::graphics
 
     private:
         void render_thread_main ();
-        void begin_frame        ();
-        void end_frame          ();
+        void record_frame       ();
+        void submit_frame       ();
+        void draw_frame         ();
 
         //~ handle events
         void subscribe_events  ();

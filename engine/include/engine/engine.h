@@ -45,7 +45,6 @@ namespace cots
 
         //~ tests
         void test_debug_input();
-
     private:
         config::manager config_manager_{};
 

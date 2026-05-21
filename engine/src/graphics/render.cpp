@@ -14,6 +14,8 @@
 
 #include <d3d12.h>
 
+#include "engine/graphics/hardware/command_context.h"
+
 cots::graphics::render::~render() = default;
 
 bool cots::graphics::render::initialize()
@@ -51,6 +53,41 @@ bool cots::graphics::render::initialize()
         spdlog::error("swapchain init failed");
         return false;
     }
+
+    //~ test command context
+    hardware::command_context test_ctx;
+    if (!test_ctx.initialize(device_))
+    {
+        spdlog::error("cmd context init failed");
+        return false;
+    }
+    //~ reset/close cycle
+    if (not test_ctx.reset())
+    {
+        spdlog::error("reset failed");
+        return false;
+    }
+    spdlog::info("[cmd-test] reset ok, list open");
+
+    if (not test_ctx.close())
+    {
+        spdlog::error("close failed");
+        return false;
+    }
+    spdlog::info("[cmd-test] close ok");
+
+    //~ must work without GPU sync since we didn't submit anything
+    if (!test_ctx.reset())
+    {
+        spdlog::error("2nd reset failed"); return false;
+    }
+    if (!test_ctx.close())
+    {
+        spdlog::error("2nd close failed"); return false;
+    }
+    spdlog::info("[cmd-test] second cycle ok");
+
+    test_ctx.deinitialize();
 
     running_ = true;
     render_thread_ = std::thread(&render::render_thread_main, this);
@@ -149,12 +186,17 @@ void cots::graphics::render::render_thread_main()
     spdlog::info("render thread stopped");
 }
 
-void cots::graphics::render::begin_frame()
+void cots::graphics::render::record_frame()
 {
 
 }
 
-void cots::graphics::render::end_frame()
+void cots::graphics::render::submit_frame()
+{
+
+}
+
+void cots::graphics::render::draw_frame()
 {
 
 }
