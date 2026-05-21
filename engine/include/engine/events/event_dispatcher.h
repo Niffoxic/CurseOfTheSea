@@ -23,6 +23,7 @@ namespace cots::events
 
         void begin_update([[maybe_unused]] float dt) override
         {
+            std::lock_guard lock(mutex_);
             dispatcher_.update();
         }
 
@@ -32,12 +33,14 @@ namespace cots::events
         template<typename Event, typename...Args>
         void publish(Args&&...args)
         {
+            std::lock_guard lock(mutex_);
             dispatcher_.trigger(Event{std::forward<Args>(args)...});
         }
 
         template<typename Event, typename...Args>
         void enqueue(Args&&...args)
         {
+            std::lock_guard lock(mutex_);
             dispatcher_.enqueue<Event>(std::forward<Args>(args)...);
         }
 
@@ -55,6 +58,7 @@ namespace cots::events
 
     private:
         entt::dispatcher dispatcher_;
+        std::mutex       mutex_;
     };
 
     //~ helpers
