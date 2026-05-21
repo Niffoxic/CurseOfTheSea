@@ -23,6 +23,7 @@ cots::graphics::render::~render() = default;
 
 bool cots::graphics::render::initialize()
 {
+    subscribe_events();
     running_ = true;
     render_thread_ = std::thread(&render::render_thread_main, this);
     return true;
@@ -35,6 +36,7 @@ void cots::graphics::render::deinitialize() noexcept
     if (render_thread_.joinable())
         render_thread_.join();
 
+    unsubscribe_events();
     spdlog::info(("Renderer deinitialized"));
 }
 
@@ -92,14 +94,11 @@ void cots::graphics::render::render_thread_main()
     swapchain_.deinitialize();
     device_   .deinitialize();
 
-    unsubscribe_events();
     spdlog::info("render thread stopped");
 }
 
 bool cots::graphics::render::initialize_render_thread()
 {
-    subscribe_events();
-
     //~ initialize device
     if (not device_.initialize())
     {

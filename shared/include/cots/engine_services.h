@@ -148,7 +148,15 @@ namespace cots::module
         void (*set_bus_muted) (int bus_index, bool muted);
         void (*pause_all) ();
         void (*resume_all)();
-    };
+    }; // audio services
+
+    //~ render services
+    struct render_services
+    {
+        void (*set_camera)( const float view[16], const float proj[16],
+                            const float pos[3], const float fwd[3],
+                            const float up[3]);
+    }; // render services
 
     //~ master
     struct services
@@ -158,6 +166,7 @@ namespace cots::module
         input_services  input;
         time_services   time;
         audio_services  audio;
+        render_services render;
     };
 
 } // namespace cots::module

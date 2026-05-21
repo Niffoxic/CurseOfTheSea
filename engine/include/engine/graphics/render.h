@@ -49,7 +49,7 @@ namespace cots::graphics
         void end_update() override;
 
         //~ for tests only
-        hardware::swapchain& swapchain() noexcept;
+              hardware::swapchain& swapchain() noexcept;
         const hardware::swapchain& swapchain() const noexcept;
 
     private:

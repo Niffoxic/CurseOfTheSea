@@ -6,6 +6,7 @@
 #include "engine/system/feature_locator.h"
 
 #include <entt/entt.hpp>
+#include <mutex>
 
 namespace cots::events
 {
@@ -30,15 +31,22 @@ namespace cots::events
         void end_update() override
         {}
 
+        //~ specifically, for main thread only
         template<typename Event, typename...Args>
         void publish(Args&&...args)
         {
-            std::lock_guard lock(mutex_);
             dispatcher_.trigger(Event{std::forward<Args>(args)...});
         }
 
+        //~ specifically, for main thread only
         template<typename Event, typename...Args>
         void enqueue(Args&&...args)
+        {
+            dispatcher_.enqueue<Event>(std::forward<Args>(args)...);
+        }
+
+        template<typename Event, typename...Args>
+        void enqueue_threadsafe(Args&&...args)
         {
             std::lock_guard lock(mutex_);
             dispatcher_.enqueue<Event>(std::forward<Args>(args)...);
@@ -61,7 +69,7 @@ namespace cots::events
         std::mutex       mutex_;
     };
 
-    //~ helpers
+    //~ profoundly for main thread
     template<typename Event, typename...Args>
     void publish(Args&&...args)
     {
@@ -71,6 +79,15 @@ namespace cots::events
         }
     }
 
-} // namespace cots::events
+    //~ mainly for render thread
+    template<typename Event, typename...Args>
+    void publish_threadsafe(Args&&...args)
+    {
+        if (const auto d = feature::locator::resolve<dispatcher>())
+        {
+            d->enqueue_threadsafe<Event>(std::forward<Args>(args)...);
+        }
+    }
+}
 
-#endif //CURSEOFTHESEA_EVENT_DISPATCHER_H
+#endif
