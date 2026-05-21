@@ -24,6 +24,10 @@ add_executable(engine
         src/services/render_services.cpp
         src/graphics/passes/clear_pass.cpp
         src/graphics/passes/present_pass.cpp
+        src/graphics/shaders/shader_cache.cpp
+        src/graphics/shaders/shader_compiler.cpp
+        src/graphics/shaders/storage/binary_storage.cpp
+        src/graphics/shaders/storage/json_storage.cpp
 )
 
 cots_apply_compile_flags(engine)
@@ -138,3 +142,37 @@ add_custom_command(TARGET engine POST_BUILD
         $<TARGET_FILE_DIR:engine>
         COMMENT "Copying FMOD Core DLL"
 )
+
+# DirectX Shader Compiler
+set(DXC_VERSION "1.9.2602.17")
+FetchContent_Declare(
+        dxc
+        URL "https://globalcdn.nuget.org/packages/microsoft.direct3d.dxc.${DXC_VERSION}.nupkg"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(dxc)
+
+target_include_directories(engine PRIVATE
+        ${dxc_SOURCE_DIR}/build/native/include
+)
+target_link_libraries(engine PRIVATE
+        ${dxc_SOURCE_DIR}/build/native/lib/x64/dxcompiler.lib
+)
+# dxcompiler.dll compiles and dxil.dll signs
+add_custom_command(TARGET engine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${dxc_SOURCE_DIR}/build/native/bin/x64/dxcompiler.dll
+        ${dxc_SOURCE_DIR}/build/native/bin/x64/dxil.dll
+        $<TARGET_FILE_DIR:engine>
+        COMMENT "Copying DXC runtime DLLs"
+)
+
+# JSON
+FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG v3.11.3
+        GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+target_link_libraries(engine PRIVATE nlohmann_json::nlohmann_json)
