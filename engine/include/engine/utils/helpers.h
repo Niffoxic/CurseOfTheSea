@@ -37,6 +37,23 @@ namespace cots::helpers
         return out;
     }
 
+    inline std::wstring to_wide(const std::string_view s)
+    {
+        if (s.empty()) return {};
+        const int len = MultiByteToWideChar(CP_UTF8, 0, s.data(),
+                                            static_cast<int>(s.size()), nullptr, 0);
+        std::wstring out(static_cast<std::size_t>(len), L'\0');
+        MultiByteToWideChar(
+            CP_UTF8,
+            0,
+            s.data(),
+            static_cast<int>(s.size()),
+                            out.data(),
+                            len
+        );
+        return out;
+    }
+
     inline D3D12_COMMAND_LIST_TYPE to_d3d12(graphics::hardware::command_list_type t)
     {
         using graphics::hardware::command_list_type;
@@ -76,6 +93,59 @@ namespace cots::helpers
         constexpr std::uint64_t command  = 0xFFFF4040; //~ red    (swapchain changes)
     }
 
+    //~ byte helpers
+    constexpr char k_b64[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    inline std::string b64_encode(const std::vector<std::uint8_t>& in)
+    {
+        std::string out;
+        out.reserve(((in.size() + 2) / 3) * 4);
+        std::size_t i = 0;
+        while (i + 3 <= in.size())
+        {
+            const std::uint32_t n = (in[i] << 16) | (in[i+1] << 8) | in[i+2];
+            out += k_b64[(n >> 18) & 63]; out += k_b64[(n >> 12) & 63];
+            out += k_b64[(n >> 6) & 63];  out += k_b64[n & 63];
+            i += 3;
+        }
+        if (const std::size_t rem = in.size() - i; rem == 1)
+        {
+            const std::uint32_t n = in[i] << 16;
+            out += k_b64[(n >> 18) & 63]; out += k_b64[(n >> 12) & 63];
+            out += "==";
+        }
+        else if (rem == 2)
+        {
+            const std::uint32_t n = (in[i] << 16) | (in[i+1] << 8);
+            out += k_b64[(n >> 18) & 63]; out += k_b64[(n >> 12) & 63];
+            out += k_b64[(n >> 6) & 63];  out += '=';
+        }
+        return out;
+    }
+
+    inline std::vector<std::uint8_t> b64_decode(const std::string& s)
+    {
+        auto val = [](char c) -> int {
+            if (c >= 'A' && c <= 'Z') return c - 'A';
+            if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+            if (c >= '0' && c <= '9') return c - '0' + 52;
+            if (c == '+') return 62;
+            if (c == '/') return 63;
+            return -1;
+        };
+        std::vector<std::uint8_t> out;
+        std::uint32_t buf = 0; int bits = 0;
+        for (const char c : s)
+        {
+            const int v = val(c);
+            if (v < 0) continue;
+            buf = (buf << 6) | static_cast<std::uint32_t>(v);
+            bits += 6;
+            if (bits >= 8) { bits -= 8; out.push_back(static_cast<std::uint8_t>((buf >> bits) & 0xFF)); }
+        }
+        return out;
+    }
 } // namespace cots::helpers
 
 #endif //CURSEOFTHESEA_HELPERS_H

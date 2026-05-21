@@ -10,5 +10,4 @@ namespace cots::graphics::passes
                           hardware::resource_state::render_target,
                           hardware::resource_state::present);
     }
-} // namespace cots::graphics::graph
-
+} // namespace cots::graphics::passes
