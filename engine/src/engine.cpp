@@ -152,17 +152,4 @@ void cots::engine::test_debug_input()
     if (kb.pressed('1')) dispatcher->enqueue<req::set_windowed_size>(1280u, 720u);
     if (kb.pressed('2')) dispatcher->enqueue<req::set_windowed_size>(1600u, 900u);
     if (kb.pressed('3')) dispatcher->enqueue<req::set_windowed_size>(1920u, 1080u);
-
-    if (kb.pressed(VK_F8))
-    {
-        const auto& dev = render_->device();
-        for (const auto& o : dev.outputs())
-        {
-            spdlog::info("output [{}] {} {}x{}{}",
-                         o.index, o.device_name, o.desktop_width, o.desktop_height,
-                         o.is_primary ? " [primary]" : "");
-            for (const auto& m : o.supported_modes)
-                spdlog::info("    {}x{} @ {:.0f}Hz", m.width, m.height, m.refresh_hz());
-        }
-    }
 }

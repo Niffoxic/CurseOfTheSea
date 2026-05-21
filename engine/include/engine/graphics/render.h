@@ -5,7 +5,9 @@
 #include <mutex>
 #include <thread>
 #include <array>
-#include <d3d12.h>
+#include <vector>
+#include <chrono>
+#include <cstdint>
 
 #include "engine/core/framework/interface/subsystem.h"
 #include "engine/core/framework/interface/tickable.h"
@@ -47,13 +49,8 @@ namespace cots::graphics
         void end_update() override;
 
         //~ for tests only
-        hardware::device&    device   () noexcept;
         hardware::swapchain& swapchain() noexcept;
-        hardware::fence&     fence    () noexcept;
-
-        const hardware::device&    device   () const noexcept;
         const hardware::swapchain& swapchain() const noexcept;
-        const hardware::fence&     fence    () const noexcept;
 
     private:
         void render_thread_main      ();

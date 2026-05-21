@@ -66,6 +66,17 @@ namespace cots::helpers
             default:                            return D3D12_RESOURCE_STATE_COMMON;
         }
     }
+
+    namespace markers
+    {
+        constexpr std::uint64_t frame    = 0xFF50A0FF; //~ blue
+        constexpr std::uint64_t record   = 0xFF40C040; //~ green  (GPU timeline)
+        constexpr std::uint64_t submit   = 0xFFFFA000; //~ orange
+        constexpr std::uint64_t present  = 0xFFB060FF; //~ purple
+        constexpr std::uint64_t command  = 0xFFFF4040; //~ red    (swapchain changes)
+    }
+
 } // namespace cots::helpers
 
 #endif //CURSEOFTHESEA_HELPERS_H
+

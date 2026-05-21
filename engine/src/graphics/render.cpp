@@ -11,11 +11,13 @@
 
 #include "engine/events/event_dispatcher.h"
 #include "engine/events/windows_event.h"
+#include "engine/utils/helpers.h"
 
 #include <d3d12.h>
 #include <dxgi1_6.h>
 
 #include "engine/graphics/hardware/command_context.h"
+#include "engine/utils/profiler.h"
 
 cots::graphics::render::~render() = default;
 
@@ -46,34 +48,14 @@ void cots::graphics::render::end_update()
 
 }
 
-cots::graphics::hardware::device& cots::graphics::render::device() noexcept
-{
-    return device_;
-}
-
 cots::graphics::hardware::swapchain& cots::graphics::render::swapchain() noexcept
 {
     return swapchain_;
 }
 
-cots::graphics::hardware::fence& cots::graphics::render::fence() noexcept
-{
-    return fence_;
-}
-
-const cots::graphics::hardware::device & cots::graphics::render::device() const noexcept
-{
-    return device_;
-}
-
 const cots::graphics::hardware::swapchain & cots::graphics::render::swapchain() const noexcept
 {
     return swapchain_;
-}
-
-const cots::graphics::hardware::fence & cots::graphics::render::fence() const noexcept
-{
-    return fence_;
 }
 
 void cots::graphics::render::render_thread_main()
@@ -160,36 +142,54 @@ bool cots::graphics::render::initialize_render_thread()
     }
     frame_.fence_values.fill(0);
     frame_.index = 0u;
-    frame_.submit_lists.reserve(hardware::flight_count);
+    frame_.submit_lists.reserve(hardware::max_submit_lists);
     return true;
 }
 
 void cots::graphics::render::draw_frame()
 {
-    const std::uint32_t frame = frame_.index;
-    fence_.wait(frame_.fence_values[frame]);
+    COTS_PROFILE_SCOPE("render::draw_frame");
 
-    //~ seam record and then serial submit
+    const std::uint32_t frame = frame_.index;
+
+    {
+        COTS_PROFILE_BEGIN("wait frame fence", helpers::markers::frame);
+        fence_.wait(frame_.fence_values[frame]);
+        COTS_PROFILE_END();
+    }
+
     frame_.submit_lists.clear();
     record_frame(frame, frame_.submit_lists);
-    submit_frame(frame_.submit_lists);
 
-    //~ present and fence this slot
-    swapchain_.present(0);
+    {
+        COTS_PROFILE_BEGIN("submit", helpers::markers::submit);
+        submit_frame(frame_.submit_lists);
+        COTS_PROFILE_END();
+    }
+
+    {
+        COTS_PROFILE_BEGIN("present", helpers::markers::present);
+        swapchain_.present(0);
+        COTS_PROFILE_END();
+    }
+
     frame_.fence_values[frame] = fence_.signal(device_.graphics_queue());
     frame_.step();
 }
 
 void cots::graphics::render::record_frame(
     const std::uint32_t frame,
-    std::vector<ID3D12CommandList *> &out
-)
+    std::vector<ID3D12CommandList*>& out)
 {
+    COTS_PROFILE_SCOPE("render::record_frame");
+
     auto& ctx = frame_.contexts[frame];
     if (!ctx.reset()) return;
 
     auto*      backbuffer = swapchain_.current_backbuffer();
     const auto rtv        = swapchain_.current_rtv_handle();
+
+    COTS_GPU_PROFILE_BEGIN(ctx.list(), "clear backbuffer", helpers::markers::record);
 
     ctx.transition(backbuffer,
                    hardware::resource_state::present,
@@ -197,7 +197,6 @@ void cots::graphics::render::record_frame(
 
     ctx.set_render_target(rtv);
 
-    //~ animated clear for test
     const float t = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - frame_.start_time_).count();
     const float color[4] =
@@ -213,11 +212,40 @@ void cots::graphics::render::record_frame(
                    hardware::resource_state::render_target,
                    hardware::resource_state::present);
 
+    COTS_GPU_PROFILE_END(ctx.list());
+
     if (not ctx.close()) [[unlikely]]
     {
         spdlog::error("command list close failed");
+        return;
     }
-    out.push_back(ctx.list());   //~ one list now, many later
+    out.push_back(ctx.list());
+}
+
+void cots::graphics::render::process_pending_commands()
+{
+    decltype(pending_) cmd;
+    {
+        std::lock_guard lock(command_mutex_);
+        if (!pending_.any()) return;
+        cmd      = pending_;
+        pending_ = {};
+    }
+
+    COTS_PROFILE_SCOPE("render::swapchain_command");
+
+    const std::uint64_t flush = fence_.signal(device_.graphics_queue());
+    if (not fence_.wait(flush))
+        spdlog::error("[render] gpu flush before swapchain change failed");
+
+    bool ok = true;
+    if (cmd.change_mode)  ok = swapchain_.set_display_mode (device_, cmd.mode) && ok;
+    if (cmd.set_win_size) ok = swapchain_.set_windowed_size(device_, cmd.win_w, cmd.win_h) && ok;
+    if (cmd.resize)       ok = swapchain_.resize           (device_, cmd.resize_w, cmd.resize_h) && ok;
+    if (not ok) spdlog::error("[render] swapchain command(s) failed");
+
+    frame_.fence_values.fill(flush);
+    frame_.index = 0u;
 }
 
 void cots::graphics::render::submit_frame(const std::vector<ID3D12CommandList*> &lists) const
@@ -231,30 +259,6 @@ void cots::graphics::render::submit_frame(const std::vector<ID3D12CommandList*> 
     );
 }
 
-void cots::graphics::render::process_pending_commands()
-{
-    decltype(pending_) cmd;
-    {
-        std::lock_guard lock(command_mutex_);
-        if (!pending_.any()) return;
-        cmd = pending_;
-        pending_ = {};
-    }
-
-    const std::uint64_t flush = fence_.signal(device_.graphics_queue());
-    if (not fence_.wait(flush))
-        spdlog::error("[render] gpu flush before swapchain change failed");
-
-    bool ok = true;
-    if (cmd.change_mode)  ok = swapchain_.set_display_mode (device_, cmd.mode)             && ok;
-    if (cmd.set_win_size) ok = swapchain_.set_windowed_size(device_, cmd.win_w, cmd.win_h) && ok;
-    if (cmd.resize)       ok = swapchain_.resize           (device_, cmd.resize_w, cmd.resize_h) && ok;
-    if (not ok) spdlog::error("[render] swapchain command(s) failed");
-
-    //~ everything is idle now
-    frame_.fence_values.fill(flush);
-    frame_.index = 0u;
-}
 
 void cots::graphics::render::subscribe_events()
 {

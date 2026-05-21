@@ -4,6 +4,9 @@
 
 #include <cstdint>
 
+#define COTS_PROFILE_CONCAT_(a, b) a##b
+#define COTS_PROFILE_CONCAT(a, b)  COTS_PROFILE_CONCAT_(a, b)
+
 #if defined(USE_PIX)
     #include <WinPixEventRuntime/pix3.h>
 
@@ -39,6 +42,7 @@ namespace cots::profile
     };
 }
 
-#define COTS_PROFILE_SCOPE(name) ::cots::profile::scope _cots_prof_scope_##__LINE__(name, 0xFF888888)
+#define COTS_PROFILE_SCOPE(name) \
+::cots::profile::scope COTS_PROFILE_CONCAT(_cots_prof_scope_, __LINE__)(name, 0xFF888888)
 
 #endif

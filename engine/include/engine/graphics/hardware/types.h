@@ -7,8 +7,8 @@
 
 namespace cots::graphics::hardware
 {
-    constexpr static inline std::uint32_t frame_count  = 3u;  //~ max frames in flight
-    constexpr static inline std::uint32_t flight_count = 8u; //~ max flight buffer
+    constexpr static inline std::uint32_t frame_count        = 3u;  //~ max frames in flight
+    constexpr static inline std::uint32_t max_submit_lists   = 8u; //~ max flight buffer
 
     enum class command_list_type: std::uint8_t
     {
