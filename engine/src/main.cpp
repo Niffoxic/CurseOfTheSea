@@ -10,6 +10,7 @@
 
 #include "engine/audio/audio_system.h"
 #include "engine/system/feature_locator.h"
+#include <timeapi.h>
 
 int main()
 {
@@ -17,6 +18,7 @@ int main()
     cots::init_debug_runtime();
 #endif
 
+    timeBeginPeriod(1);
     cots::engine engine{};
 
     if (not engine.init())
@@ -53,5 +55,6 @@ int main()
 
     spdlog::info("engine: shutting down");
     host.deinitialize();
+    timeEndPeriod(1);
     return 0;
 }

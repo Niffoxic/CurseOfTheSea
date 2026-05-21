@@ -40,9 +40,6 @@ namespace cots::platform
     }
 
     void mouse_component::begin_update(float dt)
-    {}
-
-    void mouse_component::end_update()
     {
         pressed_        .reset();
         released_       .reset();
@@ -52,6 +49,10 @@ namespace cots::platform
 
         wheel_   = 0.0f;
         wheel_h_ = 0.0f;
+    }
+
+    void mouse_component::end_update()
+    {
     }
 
     bool mouse_component::poll_messages(UINT message, WPARAM w_param, LPARAM l_param)

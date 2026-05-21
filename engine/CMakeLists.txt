@@ -83,7 +83,7 @@ target_include_directories(engine PRIVATE
 target_compile_definitions(engine PRIVATE
         COTS_AGILITY_SDK_VERSION=${AGILITY_SDK_BUILD_VERSION}
 )
-target_link_libraries(engine PRIVATE d3d12 dxgi dxguid)
+target_link_libraries(engine PRIVATE d3d12 dxgi dxguid winmm)
 
 add_custom_command(TARGET engine POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
