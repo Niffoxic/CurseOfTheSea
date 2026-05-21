@@ -7,7 +7,7 @@
 #include <array>
 #include <vector>
 #include <chrono>
-#include <cstdint>
+#include <atomic>
 
 #include "engine/core/framework/interface/subsystem.h"
 #include "engine/core/framework/interface/tickable.h"
@@ -20,6 +20,8 @@
 #include "hardware/device.h"
 #include "hardware/fence.h"
 #include "hardware/types.h"
+
+#include "render_snapshot.h"
 
 #include <d3d12.h>
 #include <dxgi1_6.h>
@@ -48,16 +50,30 @@ namespace cots::graphics
         void begin_update(float dt) override;
         void end_update() override;
 
+        // called by render_services(MT) installer during host update
+        [[nodiscard]] scene_snapshot& building_snapshot() noexcept;
+
         //~ for tests only
               hardware::swapchain& swapchain() noexcept;
         const hardware::swapchain& swapchain() const noexcept;
 
+        //~ thread safe fps
+        [[nodiscard]] float fps     () const noexcept
+        {
+            return stat_fps_.load(std::memory_order_relaxed);
+        }
+        //~ thread safe ms
+        [[nodiscard]] float frame_ms() const noexcept
+        {
+            return stat_frame_ms_.load(std::memory_order_relaxed);
+        }
+
     private:
         void render_thread_main      ();
         bool initialize_render_thread();
-        void draw_frame              ();
 
-        void record_frame(std::uint32_t frame, std::vector<ID3D12CommandList*>& out);
+        void draw_frame  (const scene_snapshot& snap);
+        void record_frame(std::uint32_t frame,  const scene_snapshot& snap, std::vector<ID3D12CommandList*>& out);
         void submit_frame(const std::vector<ID3D12CommandList*>& lists) const;
 
         //~ core
@@ -71,10 +87,14 @@ namespace cots::graphics
         void on_set_display_mode (const events::swapchain::set_display_mode& event);
         void on_set_windowed_size(const events::swapchain::set_windowed_size& event);
 
+        //~ snapshots
+        void publish_snapshot(); // on begin update(MT)
+        bool acquire_snapshot(); // grabs pending if any(RT)
     private:
         std::thread       render_thread_{};
         std::mutex        command_mutex_;
-        std::atomic<bool> running_{ false };
+        std::atomic<bool> running_      { false };
+        std::atomic<bool> render_ready_ { false };
 
         //~ systems
         hardware::device    device_   {};
@@ -97,7 +117,7 @@ namespace cots::graphics
             }
         } frame_;
 
-        //~ pending swapchain commands
+        //~ pending swap chain commands
         struct
         {
             bool          resize       { false };
@@ -114,6 +134,32 @@ namespace cots::graphics
             [[nodiscard]] bool any() const noexcept
             { return resize || change_mode || set_win_size; }
         } pending_{};
+
+        //~ triple buffered snapshots (TODO: profile this sht)
+        static constexpr std::uint32_t invalid_idx = ~0u;
+        struct
+        {
+            std::array<scene_snapshot, 3> scene{};
+            std::atomic<std::uint32_t>    building_idx{ 0 };
+            std::atomic<std::uint32_t>    pending_idx { invalid_idx };
+            std::uint32_t                 render_idx  { 0 }; //~ RTs current slot
+
+            std::uint64_t frame_counter{ 0 };   //~ MT snapshot id source
+
+            scene_snapshot& latest()
+            {
+                return scene[render_idx];
+            }
+
+            scene_snapshot& next_build()
+            {
+                return scene[building_idx.load(std::memory_order_relaxed)];
+            }
+        } snapshots_;
+
+        //~ benchmarks
+        std::atomic<float> stat_fps_     { 0.f };
+        std::atomic<float> stat_frame_ms_{ 0.f };
     };
 }
 

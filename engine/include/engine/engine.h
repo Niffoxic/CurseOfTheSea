@@ -44,7 +44,8 @@ namespace cots
         void update_tickable();
 
         //~ tests
-        void test_debug_input();
+        void test_debug_input() const;
+        void test_fps        () const;
     private:
         config::manager config_manager_{};
 

@@ -5,15 +5,15 @@ add_executable(engine
         src/platform/platform_windows.cpp
         src/system/game_host.cpp
         src/system/service_registry.cpp
-        src/system/log_services.cpp
-        src/system/window_services.cpp
+        src/services/log_services.cpp
+        src/services/window_services.cpp
         src/platform/components/keyboard_component.cpp
         src/platform/components/mouse_component.cpp
         src/audio/audio_system.cpp
         src/audio/backend/null_backend.cpp
         src/audio/backend/fmod_backend.cpp
-        src/system/audio_services.cpp
-        src/system/input_services.cpp
+        src/services/audio_services.cpp
+        src/services/input_services.cpp
         src/agility_sdk.cpp
         src/graphics/render.cpp
         src/graphics/hardware/device.cpp
@@ -21,6 +21,7 @@ add_executable(engine
         src/graphics/hardware/swapchain.cpp
         src/graphics/hardware/fence.cpp
         src/graphics/hardware/command_context.cpp
+        src/services/render_services.cpp
 )
 
 cots_apply_compile_flags(engine)

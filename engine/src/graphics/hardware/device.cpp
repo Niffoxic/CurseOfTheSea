@@ -216,6 +216,9 @@ void cots::graphics::hardware::device::refresh_outputs()
 bool cots::graphics::hardware::device::create_internal(
     const device_create_info &info)
 {
+    static int s_count = 0;
+    spdlog::warn("[device] create_internal called {} times", ++s_count);
+
     if (!pick_adapter(info, adapter_))
     {
         spdlog::error("[hardware:device] adapter selection failed");

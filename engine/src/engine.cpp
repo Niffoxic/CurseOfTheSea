@@ -37,7 +37,7 @@ bool cots::engine::init()
 
     //~ defaults
     timer_->reset();
-    timer_->set_target_frame_ps(160);
+    timer_->set_target_frame_ps(360);
 
     return true;
 }
@@ -46,7 +46,7 @@ void cots::engine::tick()
 {
     COTS_PROFILE_SCOPE("engine::tick");
     timer_->step();
-
+    test_fps();
     test_debug_input();
     update_tickable();
 }
@@ -130,7 +130,7 @@ void cots::engine::update_tickable()
     }
 }
 
-void cots::engine::test_debug_input()
+void cots::engine::test_debug_input() const
 {
     const auto& kb = windows_->keyboard;
     const auto dispatcher = feature::locator::resolve<events::dispatcher>();
@@ -152,4 +152,32 @@ void cots::engine::test_debug_input()
     if (kb.pressed('1')) dispatcher->enqueue<req::set_windowed_size>(1280u, 720u);
     if (kb.pressed('2')) dispatcher->enqueue<req::set_windowed_size>(1600u, 900u);
     if (kb.pressed('3')) dispatcher->enqueue<req::set_windowed_size>(1920u, 1080u);
+}
+
+void cots::engine::test_fps() const
+{
+    using clock = std::chrono::steady_clock;
+
+    static auto window_start = clock::now();
+    static int  mt_frames    = 0;
+    ++mt_frames;
+
+    const auto  now     = clock::now();
+    const float elapsed = std::chrono::duration<float>(now - window_start).count();
+
+    if (elapsed >= 0.5f)
+    {
+        const float mt_fps = static_cast<float>(mt_frames) / elapsed;
+        const float mt_ms  = (elapsed * 1000.f) / static_cast<float>(mt_frames);
+
+        const float rt_fps = render_->fps();
+        const float rt_ms  = render_->frame_ms();
+
+        windows_->set_debug(std::format(
+            "MT {:.0f} fps ({:.2f} ms)  |  RT {:.0f} fps ({:.2f} ms)",
+            mt_fps, mt_ms, rt_fps, rt_ms));
+
+        window_start = now;
+        mt_frames    = 0;
+    }
 }

@@ -40,14 +40,25 @@ void cots::graphics::render::deinitialize() noexcept
     spdlog::info(("Renderer deinitialized"));
 }
 
-void cots::graphics::render::begin_update(float dt)
+void cots::graphics::render::begin_update(const float dt)
 {
+    if (!render_ready_.load(std::memory_order_acquire)) return;
 
+    //~ publish what the game built last frame into pending
+    auto& building = snapshots_.next_build();
+    building.frame_id   = snapshots_.frame_counter++;
+    building.delta_time = dt;
+
+    publish_snapshot();
 }
 
 void cots::graphics::render::end_update()
 {
+}
 
+cots::graphics::scene_snapshot & cots::graphics::render::building_snapshot() noexcept
+{
+    return snapshots_.next_build();
 }
 
 cots::graphics::hardware::swapchain& cots::graphics::render::swapchain() noexcept
@@ -77,14 +88,16 @@ void cots::graphics::render::render_thread_main()
     {
         process_pending_commands();
         //~ occlusion check
-        if (!swapchain_.check_occlusion())
+        if (not swapchain_.check_occlusion())
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
 
-        draw_frame();
+        const bool had_new = acquire_snapshot();
+        draw_frame(snapshots_.latest());
     }
+
     if (not fence_.wait(fence_.last_signaled_value())) [[unlikely]]
     {
         spdlog::error("[very unexpected] fence wait failed");
@@ -142,64 +155,73 @@ bool cots::graphics::render::initialize_render_thread()
     frame_.fence_values.fill(0);
     frame_.index = 0u;
     frame_.submit_lists.reserve(hardware::max_submit_lists);
+
+    render_ready_.store(true, std::memory_order_release);
     return true;
 }
 
-void cots::graphics::render::draw_frame()
+void cots::graphics::render::draw_frame(const scene_snapshot& snap)
 {
     COTS_PROFILE_SCOPE("render::draw_frame");
 
+    using clock = std::chrono::steady_clock;
+
+    //~ RT-only accumulator - no sync needed, only this thread touches it
+    static clock::time_point window_start = clock::now();
+    static double            accum_ms     = 0.0;
+    static std::uint32_t     accum_frames = 0;
+
+    const auto frame_begin = clock::now();
     const std::uint32_t frame = frame_.index;
 
-    {
-        COTS_PROFILE_BEGIN("wait frame fence", helpers::markers::frame);
-        fence_.wait(frame_.fence_values[frame]);
-        COTS_PROFILE_END();
-    }
+    fence_.wait(frame_.fence_values[frame]);
 
     frame_.submit_lists.clear();
-    record_frame(frame, frame_.submit_lists);
+    record_frame(frame, snap, frame_.submit_lists);
+    submit_frame(frame_.submit_lists);
 
-    {
-        COTS_PROFILE_BEGIN("submit", helpers::markers::submit);
-        submit_frame(frame_.submit_lists);
-        COTS_PROFILE_END();
-    }
-
-    {
-        COTS_PROFILE_BEGIN("present", helpers::markers::present);
-        swapchain_.present(0);
-        COTS_PROFILE_END();
-    }
+    swapchain_.present(0);
 
     frame_.fence_values[frame] = fence_.signal(device_.graphics_queue());
     frame_.step();
+
+    //~ telemetry
+    const auto   frame_end = clock::now();
+    accum_ms += std::chrono::duration<double, std::milli>(frame_end - frame_begin).count();
+    ++accum_frames;
+
+    const double elapsed = std::chrono::duration<double>(frame_end - window_start).count();
+    if (elapsed >= 1.0 && accum_frames > 0)
+    {
+        stat_fps_     .store(static_cast<float>(accum_frames / elapsed),       std::memory_order_relaxed);
+        stat_frame_ms_.store(static_cast<float>(accum_ms / accum_frames),      std::memory_order_relaxed);
+
+        window_start = frame_end;
+        accum_ms     = 0.0;
+        accum_frames = 0;
+    }
 }
 
 void cots::graphics::render::record_frame(
     const std::uint32_t frame,
+    const scene_snapshot& snap,
     std::vector<ID3D12CommandList*>& out)
 {
-    COTS_PROFILE_SCOPE("render::record_frame");
-
     auto& ctx = frame_.contexts[frame];
     if (!ctx.reset()) return;
 
     auto*      backbuffer = swapchain_.current_backbuffer();
     const auto rtv        = swapchain_.current_rtv_handle();
 
-    COTS_GPU_PROFILE_BEGIN(ctx.list(), "clear backbuffer", helpers::markers::record);
+    COTS_GPU_PROFILE_BEGIN(ctx.list(), "clear backbuffer", 0xFF40C040);
 
-    ctx.transition(backbuffer,
-                   hardware::resource_state::present,
-                   hardware::resource_state::render_target);
-
+    ctx.transition(backbuffer, hardware::resource_state::present,
+                               hardware::resource_state::render_target);
     ctx.set_render_target(rtv);
 
-    const float t = std::chrono::duration<float>(
-        std::chrono::steady_clock::now() - frame_.start_time_).count();
-    const float color[4] =
-    {
+    //~ drive color from snapshot data to test the pipeline
+    const float t = static_cast<float>(snap.frame_id) * 0.01f;
+    const float color[4] = {
         0.5f + 0.5f * std::sin(t * 0.7f),
         0.5f + 0.5f * std::sin(t * 0.9f + 2.0f),
         0.5f + 0.5f * std::sin(t * 1.3f + 4.0f),
@@ -207,9 +229,8 @@ void cots::graphics::render::record_frame(
     };
     ctx.clear_render_target(rtv, color);
 
-    ctx.transition(backbuffer,
-                   hardware::resource_state::render_target,
-                   hardware::resource_state::present);
+    ctx.transition(backbuffer, hardware::resource_state::render_target,
+                               hardware::resource_state::present);
 
     COTS_GPU_PROFILE_END(ctx.list());
 
@@ -296,4 +317,35 @@ void cots::graphics::render::on_set_windowed_size(const events::swapchain::set_w
     pending_.set_win_size = true;
     pending_.win_w = event.width;
     pending_.win_h = event.height;
+}
+
+void cots::graphics::render::publish_snapshot()
+{
+    const std::uint32_t just_built = snapshots_.building_idx.load(std::memory_order_relaxed);
+
+    //~ hand it to the RT
+    snapshots_.pending_idx.store(just_built, std::memory_order_release);
+
+    //~ pick a new building slot thats neither pending nor being rendered
+    //  with 3 slots and at most 2 "taken" (pending + render) one is always free
+    const std::uint32_t rendering = snapshots_.render_idx;   //~ read is racy but only used as a hint
+    std::uint32_t next = (just_built + 1u) % 3u;
+    if (next == rendering) next = (next + 1u) % 3u;
+
+    snapshots_.building_idx.store(next, std::memory_order_relaxed);
+
+    //~ clear the fresh building slot for this frames writes
+    snapshots_.scene[next].clear();
+}
+
+bool cots::graphics::render::acquire_snapshot()
+{
+    const std::uint32_t pending =
+        snapshots_.pending_idx.exchange(invalid_idx, std::memory_order_acquire);
+
+    if (pending == invalid_idx)
+        return false;   //~ nothing new - caller redraws render_idx_
+
+    snapshots_.render_idx = pending;
+    return true;
 }
