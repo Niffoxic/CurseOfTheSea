@@ -22,6 +22,8 @@ add_executable(engine
         src/graphics/hardware/fence.cpp
         src/graphics/hardware/command_context.cpp
         src/services/render_services.cpp
+        src/graphics/passes/clear_pass.cpp
+        src/graphics/passes/present_pass.cpp
 )
 
 cots_apply_compile_flags(engine)

@@ -10,7 +10,7 @@ namespace game
         gs.services->log.info("player: initialized");
     }
 
-    void player_update(game_state& gs, float dt)
+    void player_update(game_state& gs, const float dt)
     {
         const auto& in = gs.services->input;
         auto& p = gs.player;

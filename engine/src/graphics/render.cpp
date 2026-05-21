@@ -4,6 +4,9 @@
 #include "engine/graphics/hardware/device.h"
 #include "engine/graphics/hardware/fence.h"
 #include "engine/graphics/hardware/swapchain.h"
+#include "engine/graphics/hardware/command_context.h"
+
+#include "engine/utils/profiler.h"
 
 #include "engine/core/cots_assert.h"
 #include "engine/system/define_features.h"
@@ -16,8 +19,11 @@
 #include <d3d12.h>
 #include <dxgi1_6.h>
 
-#include "engine/graphics/hardware/command_context.h"
-#include "engine/utils/profiler.h"
+//~ render graph passes
+#include "engine/graphics/passes/pass_context.h"
+#include "engine/graphics/passes/pass.h"
+#include "engine/graphics/passes/clear_pass.h"
+#include "engine/graphics/passes/present_pass.h"
 
 cots::graphics::render::~render() = default;
 
@@ -156,6 +162,8 @@ bool cots::graphics::render::initialize_render_thread()
     frame_.index = 0u;
     frame_.submit_lists.reserve(hardware::max_submit_lists);
 
+    if (not build_passes()) return false;
+
     render_ready_.store(true, std::memory_order_release);
     return true;
 }
@@ -210,29 +218,23 @@ void cots::graphics::render::record_frame(
     auto& ctx = frame_.contexts[frame];
     if (!ctx.reset()) return;
 
-    auto*      backbuffer = swapchain_.current_backbuffer();
-    const auto rtv        = swapchain_.current_rtv_handle();
-
-    COTS_GPU_PROFILE_BEGIN(ctx.list(), "clear backbuffer", 0xFF40C040);
-
-    ctx.transition(backbuffer, hardware::resource_state::present,
-                               hardware::resource_state::render_target);
-    ctx.set_render_target(rtv);
-
-    //~ drive color from snapshot data to test the pipeline
-    const float t = static_cast<float>(snap.frame_id) * 0.01f;
-    const float color[4] = {
-        0.5f + 0.5f * std::sin(t * 0.7f),
-        0.5f + 0.5f * std::sin(t * 0.9f + 2.0f),
-        0.5f + 0.5f * std::sin(t * 1.3f + 4.0f),
-        1.0f
+    const pass_context pc
+    {
+        .ctx         = ctx,
+        .snap        = snap,
+        .backbuffer  = swapchain_.current_backbuffer(),
+        .rtv_handle  = swapchain_.current_rtv_handle(),
+        .width       = swapchain_.width(),
+        .height      = swapchain_.height(),
+        .frame_index = frame,
     };
-    ctx.clear_render_target(rtv, color);
 
-    ctx.transition(backbuffer, hardware::resource_state::render_target,
-                               hardware::resource_state::present);
-
-    COTS_GPU_PROFILE_END(ctx.list());
+    for (const auto& p : passes_)
+    {
+        COTS_GPU_PROFILE_BEGIN(ctx.list(), p->name(), 0xFF40C040);
+        p->execute(pc);
+        COTS_GPU_PROFILE_END(ctx.list());
+    }
 
     if (not ctx.close()) [[unlikely]]
     {
@@ -266,6 +268,24 @@ void cots::graphics::render::process_pending_commands()
 
     frame_.fence_values.fill(flush);
     frame_.index = 0u;
+}
+
+bool cots::graphics::render::build_passes()
+{
+    passes_.clear();
+    passes_.push_back(std::make_unique<passes::clear_pass>());
+    passes_.push_back(std::make_unique<passes::present_pass>());
+
+    for (auto& p : passes_)
+    {
+        if (not p->setup(device_))
+        {
+            spdlog::error("[render] pass '{}' setup failed", p->name());
+            return false;
+        }
+    }
+    spdlog::info("[render] {} pass(es) ready", passes_.size());
+    return true;
 }
 
 void cots::graphics::render::submit_frame(const std::vector<ID3D12CommandList*> &lists) const

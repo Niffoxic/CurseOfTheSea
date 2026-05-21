@@ -8,6 +8,9 @@
 #include <vector>
 #include <chrono>
 #include <atomic>
+#include <memory>
+#include <d3d12.h>
+#include <dxgi1_6.h>
 
 #include "engine/core/framework/interface/subsystem.h"
 #include "engine/core/framework/interface/tickable.h"
@@ -21,10 +24,8 @@
 #include "hardware/fence.h"
 #include "hardware/types.h"
 
+#include "passes/pass.h"
 #include "render_snapshot.h"
-
-#include <d3d12.h>
-#include <dxgi1_6.h>
 
 namespace cots::graphics
 {
@@ -78,6 +79,7 @@ namespace cots::graphics
 
         //~ core
         void process_pending_commands();
+        bool build_passes();
 
         //~ handle events
         void subscribe_events  ();
@@ -156,6 +158,9 @@ namespace cots::graphics
                 return scene[building_idx.load(std::memory_order_relaxed)];
             }
         } snapshots_;
+
+        //~ render graph
+        std::vector<std::unique_ptr<pass>> passes_;
 
         //~ benchmarks
         std::atomic<float> stat_fps_     { 0.f };
