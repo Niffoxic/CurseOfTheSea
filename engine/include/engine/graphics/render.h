@@ -18,6 +18,7 @@
 #include "engine/graphics/hardware/swapchain.h"
 #include "engine/graphics/hardware/command_context.h"
 #include "engine/graphics/shaders/shader_cache.h"
+#include "engine/graphics/hardware/buffer_manager.h"
 
 #include "engine/events/windows_event.h"
 #include "engine/events/graphics_event.h"
@@ -60,6 +61,11 @@ namespace cots::graphics
         [[nodiscard]] shaders::shader_cache& shader_cache() noexcept
         {
             return shader_cache_;
+        }
+
+        [[nodiscard]] hardware::buffer_manager& buffers() noexcept
+        {
+            return buffers_;
         }
 
         //~ for tests only
@@ -189,7 +195,8 @@ namespace cots::graphics
         std::atomic<float> stat_frame_ms_{ 0.f };
 
         //~ core
-        shaders::shader_cache shader_cache_{};
+        shaders::shader_cache    shader_cache_{};
+        hardware::buffer_manager buffers_     {};
     };
 }
 

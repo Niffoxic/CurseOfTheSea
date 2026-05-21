@@ -116,6 +116,7 @@ void cots::graphics::render::render_thread_main()
 
     //~ destroy resources
     shader_cache_.deinitialize();
+    buffers_     .deinitialize();
     fence_       .deinitialize();
     swapchain_   .deinitialize();
     device_      .deinitialize();
@@ -130,6 +131,32 @@ bool cots::graphics::render::initialize_render_thread()
     {
         spdlog::error("device init failed");
         return false;
+    }
+
+    if (not buffers_.initialize(device_))
+    {
+        spdlog::error("buffer manager init failed");
+        return false;
+    }
+
+    //~ test
+    {
+        const std::uint32_t test_data[4] =
+        {
+            0xDEADBEEF, 0x12345678, 0xCAFEBABE, 0x0BADF00D
+        };
+
+        hardware::buffer_create_info bi{};
+        bi.size_bytes   = sizeof(test_data);
+        bi.kind         = hardware::buffer_kind::generic;
+        bi.initial_data = test_data;
+        bi.debug_name   = "test_buffer";
+
+        const auto h = buffers_.create(bi);
+        spdlog::info("[buf-test] created handle {{idx={}, gen={}}}, gpu_addr=0x{:X}",
+                     h.index, h.generation, buffers_.gpu_address(h));
+
+        buffers_.destroy(h);
     }
 
     //~ initialize fence

@@ -187,7 +187,7 @@ namespace cots::graphics::hardware
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type  = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barrier.Transition.pResource   = s.resource;
-        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
         barrier.Transition.StateAfter  =
             (s.kind == buffer_kind::index)
                 ? D3D12_RESOURCE_STATE_INDEX_BUFFER
