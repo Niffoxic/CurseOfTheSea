@@ -174,6 +174,11 @@ namespace cots::helpers
         return true;
     }
 
+    inline std::uint64_t adjust_to_256(const std::uint64_t bytes, const bool is_constant = false)
+    {
+        return is_constant? (bytes + 255) & ~static_cast<std::uint64_t>(255): bytes;
+    }
+
 } // namespace cots::helpers
 
 #endif //CURSEOFTHESEA_HELPERS_H
