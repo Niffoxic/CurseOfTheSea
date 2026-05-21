@@ -14,6 +14,7 @@
 #include "engine/graphics/hardware/command_context.h"
 
 #include "engine/events/windows_event.h"
+#include "engine/events/graphics_event.h"
 #include "hardware/device.h"
 #include "hardware/fence.h"
 #include "hardware/types.h"
@@ -69,7 +70,9 @@ namespace cots::graphics
         void subscribe_events  ();
         void unsubscribe_events();
 
-        void on_window_resized(const events::window_resized& event);
+        void on_window_resized   (const events::window_resized& event);
+        void on_set_display_mode (const events::swapchain::set_display_mode& event);
+        void on_set_windowed_size(const events::swapchain::set_windowed_size& event);
 
     private:
         std::thread       render_thread_{};
@@ -97,9 +100,23 @@ namespace cots::graphics
             }
         } frame_;
 
-        //~ handle events TODO: Create a command dispatcher instead
-        events::window_resized event_pending_resize_{};
-        bool has_pending_resize_ { false };
+        //~ pending swapchain commands
+        struct
+        {
+            bool          resize       { false };
+            std::uint32_t resize_w     { 0 };
+            std::uint32_t resize_h     { 0 };
+
+            bool          change_mode  { false };
+            hardware::display_mode mode { hardware::display_mode::windowed };
+
+            bool          set_win_size { false };
+            std::uint32_t win_w        { 0 };
+            std::uint32_t win_h        { 0 };
+
+            [[nodiscard]] bool any() const noexcept
+            { return resize || change_mode || set_win_size; }
+        } pending_{};
     };
 }
 

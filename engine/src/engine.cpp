@@ -5,6 +5,7 @@
 #include <ranges>
 
 #include "engine/core/cots_assert.h"
+#include "engine/events/graphics_event.h"
 #include "engine/system/define_features.h"
 #include "engine/platform/platform_windows.h"
 #include "engine/graphics/render.h"
@@ -132,34 +133,29 @@ void cots::engine::update_tickable()
 void cots::engine::test_debug_input()
 {
     const auto& kb = windows_->keyboard;
-    auto& sc = render_->swapchain();
-    const auto& dev = render_->device();
+    const auto dispatcher = feature::locator::resolve<events::dispatcher>();
 
     using mode = graphics::hardware::display_mode;
+    namespace req = events::swapchain;
 
     // toggle borderless <-> windowed
     if (kb.pressed(VK_F11))
     {
-        const auto cur = sc.current_mode();
-        sc.set_display_mode(dev, cur == mode::windowed ? mode::borderless : mode::windowed);
+        const auto cur = render_->swapchain().current_mode();
+        dispatcher->enqueue<req::set_display_mode>(
+            cur == mode::windowed ? mode::borderless : mode::windowed);
     }
 
-    // exclusive fullscreen
-    if (kb.pressed(VK_F10))
-        sc.set_display_mode(dev, mode::exclusive_fullscreen);
+    if (kb.pressed(VK_F10)) dispatcher->enqueue<req::set_display_mode>(mode::exclusive_fullscreen);
+    if (kb.pressed(VK_F9))  dispatcher->enqueue<req::set_display_mode>(mode::windowed);
 
-    // escape hatch back to windowed
-    if (kb.pressed(VK_F9))
-        sc.set_display_mode(dev, mode::windowed);
+    if (kb.pressed('1')) dispatcher->enqueue<req::set_windowed_size>(1280u, 720u);
+    if (kb.pressed('2')) dispatcher->enqueue<req::set_windowed_size>(1600u, 900u);
+    if (kb.pressed('3')) dispatcher->enqueue<req::set_windowed_size>(1920u, 1080u);
 
-    // resolution presets
-    if (kb.pressed('1')) sc.set_windowed_size(dev, 1280, 720);
-    if (kb.pressed('2')) sc.set_windowed_size(dev, 1600, 900);
-    if (kb.pressed('3')) sc.set_windowed_size(dev, 1920, 1080);
-
-    // dump display info
     if (kb.pressed(VK_F8))
     {
+        const auto& dev = render_->device();
         for (const auto& o : dev.outputs())
         {
             spdlog::info("output [{}] {} {}x{}{}",

@@ -92,7 +92,6 @@ void cots::graphics::render::render_thread_main()
     while (running_.load(std::memory_order_relaxed))
     {
         process_pending_commands();
-
         //~ occlusion check
         if (!swapchain_.check_occlusion())
         {
@@ -117,7 +116,7 @@ void cots::graphics::render::render_thread_main()
 
 bool cots::graphics::render::initialize_render_thread()
 {
- subscribe_events();
+    subscribe_events();
 
     //~ initialize device
     if (not device_.initialize())
@@ -234,37 +233,64 @@ void cots::graphics::render::submit_frame(const std::vector<ID3D12CommandList*> 
 
 void cots::graphics::render::process_pending_commands()
 {
-    //~ drain commands
-    std::lock_guard lock(command_mutex_);
-    if (has_pending_resize_)
+    decltype(pending_) cmd;
     {
-        const bool status = swapchain_.resize(
-            device_,
-            event_pending_resize_.width,
-            event_pending_resize_.height
-        );
-        if (not status) spdlog::error("swapchain resize failed");
-        has_pending_resize_ = false;
+        std::lock_guard lock(command_mutex_);
+        if (!pending_.any()) return;
+        cmd = pending_;
+        pending_ = {};
     }
+
+    const std::uint64_t flush = fence_.signal(device_.graphics_queue());
+    if (not fence_.wait(flush))
+        spdlog::error("[render] gpu flush before swapchain change failed");
+
+    bool ok = true;
+    if (cmd.change_mode)  ok = swapchain_.set_display_mode (device_, cmd.mode)             && ok;
+    if (cmd.set_win_size) ok = swapchain_.set_windowed_size(device_, cmd.win_w, cmd.win_h) && ok;
+    if (cmd.resize)       ok = swapchain_.resize           (device_, cmd.resize_w, cmd.resize_h) && ok;
+    if (not ok) spdlog::error("[render] swapchain command(s) failed");
+
+    //~ everything is idle now
+    frame_.fence_values.fill(flush);
+    frame_.index = 0u;
 }
 
 void cots::graphics::render::subscribe_events()
 {
-    const auto dispatcher = feature::locator::resolve<events::dispatcher>();
-    dispatcher->subscribe<events::window_resized,
-    &render::on_window_resized>(*this);
+    const auto d = feature::locator::resolve<events::dispatcher>();
+    d->subscribe<events::window_resized,                       &render::on_window_resized>(*this);
+    d->subscribe<events::swapchain::set_display_mode,  &render::on_set_display_mode>(*this);
+    d->subscribe<events::swapchain::set_windowed_size, &render::on_set_windowed_size>(*this);
 }
 
 void cots::graphics::render::unsubscribe_events()
 {
-    const auto dispatcher = feature::locator::resolve<events::dispatcher>();
-    dispatcher->unsubscribe<events::window_resized,
-    &render::on_window_resized>(*this);
+    const auto d = feature::locator::resolve<events::dispatcher>();
+    d->unsubscribe<events::window_resized,                       &render::on_window_resized>(*this);
+    d->unsubscribe<events::swapchain::set_display_mode,  &render::on_set_display_mode>(*this);
+    d->unsubscribe<events::swapchain::set_windowed_size, &render::on_set_windowed_size>(*this);
 }
 
 void cots::graphics::render::on_window_resized(const events::window_resized &event)
 {
     std::lock_guard lock(command_mutex_);
-    event_pending_resize_ = event;
-    has_pending_resize_   = true;
+    pending_.resize   = true;
+    pending_.resize_w = event.width;
+    pending_.resize_h = event.height;
+}
+
+void cots::graphics::render::on_set_display_mode(const events::swapchain::set_display_mode& event)
+{
+    std::lock_guard lock(command_mutex_);
+    pending_.change_mode = true;
+    pending_.mode        = event.mode;
+}
+
+void cots::graphics::render::on_set_windowed_size(const events::swapchain::set_windowed_size& event)
+{
+    std::lock_guard lock(command_mutex_);
+    pending_.set_win_size = true;
+    pending_.win_w = event.width;
+    pending_.win_h = event.height;
 }

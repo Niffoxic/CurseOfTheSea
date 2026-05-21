@@ -51,6 +51,16 @@ namespace cots::events
         {
              cots::graphics::hardware::display_mode new_mode;
         };
+
+        struct set_display_mode
+        {
+            cots::graphics::hardware::display_mode mode;
+        };
+        struct set_windowed_size
+        {
+            std::uint32_t width;
+            std::uint32_t height;
+        };
     }
 
 } // namespace cots::events::graphics
