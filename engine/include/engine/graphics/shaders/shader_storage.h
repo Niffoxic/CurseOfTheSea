@@ -29,6 +29,7 @@ namespace cots::graphics::shaders
         [[nodiscard]] virtual bool load_all (cache_map& out)       = 0;
         [[nodiscard]] virtual bool store_all(const cache_map& in)  = 0;
     };
-}
+} // namespace cots::graphics::shaders
 
 #endif
+
