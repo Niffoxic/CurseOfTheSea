@@ -17,10 +17,11 @@ namespace cots::events
 
 namespace cots
 {
-    namespace platform{ class windows; }
-    namespace utils   { class timer;   }
-    namespace events  { class dispatcher;}
-    namespace audio   { class system;  }
+    namespace platform { class windows;     }
+    namespace utils    { class timer;       }
+    namespace events   { class dispatcher;  }
+    namespace audio    { class system;      }
+    namespace graphics { class render;      }
 
     class engine
     {
@@ -42,11 +43,15 @@ namespace cots
         //~ processes
         void update_tickable();
 
+        //~ tests
+        void test_debug_input();
+
     private:
         config::manager config_manager_{};
 
-        std::shared_ptr<utils::timer>       timer_     { nullptr };
-        std::shared_ptr<platform::windows>  windows_   { nullptr };
+        std::shared_ptr<utils::timer>      timer_  { nullptr };
+        std::shared_ptr<platform::windows> windows_{ nullptr };
+        std::shared_ptr<graphics::render>  render_ { nullptr };
 
         utils::dependency_scheduler<interfaces::subsystem> subsystem_scheduler_;
         utils::dependency_scheduler<interfaces::tickable>  tickable_scheduler_;

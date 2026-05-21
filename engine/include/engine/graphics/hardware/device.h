@@ -12,11 +12,13 @@ struct IDXGIFactory7;
 struct IDXGIAdapter4;
 struct ID3D12CommandQueue;
 struct ID3D12InfoQueue1;
+struct IDXGIAdapter1;
 
 namespace cots::graphics::hardware
 {
     struct adapter_info
     {
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
         std::string   name;
         std::uint32_t adapter_index;
         std::uint32_t vendor_id;
@@ -28,10 +30,10 @@ namespace cots::graphics::hardware
 
     struct display_format
     {
-        std::uint32_t width;
-        std::uint32_t height;
-        std::uint32_t refresh_numerator;
-        std::uint32_t refresh_denominator;
+        std::uint32_t width              { 0u };
+        std::uint32_t height             { 0u };
+        std::uint32_t refresh_numerator  { 0u };
+        std::uint32_t refresh_denominator{ 0u };
 
         [[nodiscard]]
         float refresh_hz() const noexcept

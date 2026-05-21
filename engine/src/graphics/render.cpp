@@ -2,10 +2,15 @@
 
 #include "engine/graphics/render.h"
 #include "engine/graphics/hardware/device.h"
+#include "engine/graphics/hardware/fence.h"
+#include "engine/graphics/hardware/swapchain.h"
 
 #include "engine/core/cots_assert.h"
-#include "engine/graphics/hardware/fence.h"
+#include "engine/system/define_features.h"
 #include "spdlog/spdlog.h"
+
+#include "engine/events/event_dispatcher.h"
+#include "engine/events/windows_event.h"
 
 #include <d3d12.h>
 
@@ -13,50 +18,39 @@ cots::graphics::render::~render() = default;
 
 bool cots::graphics::render::initialize()
 {
-    //~ test device
-    hardware::device test_device;
-    if (!test_device.initialize())
+    subscribe_events();
+
+    //~ initialize device
+    if (not device_.initialize())
     {
         spdlog::error("device init failed");
         return false;
     }
-    spdlog::info("{} adapters available",
-                 test_device.adapters_info().size());
 
-    //~ test fence
-    hardware::fence test_fence;
-    if (!test_fence.initialize(test_device))
+    //~ initialize fence
+    if (not fence_.initialize(device_))
     {
         spdlog::error("fence init failed");
         return false;
     }
 
-    if (!test_fence.wait(0))
+    //~ initialize swapchain
+    const auto windows = feature::locator::resolve<platform::windows>();
+    const auto size = windows->get_window_size<std::uint32_t>();
+
+    hardware::swapchain_create_info swapchain_info{};
+    swapchain_info.allow_tearing = true;
+    swapchain_info.width         = size.width;
+    swapchain_info.height        = size.height;
+    swapchain_info.mode          = hardware::display_mode::windowed;
+    swapchain_info.frame_count   = 3;
+    swapchain_info.window_handle = windows->get_window_handle();
+
+    if (not swapchain_.initialize(device_, swapchain_info))
     {
-        spdlog::error("fence wait failed");
+        spdlog::error("swapchain init failed");
         return false;
     }
-    spdlog::info("fence signaled");
-
-    //~ test signal advances
-    const auto target = test_fence.signal(test_device.graphics_queue());
-    spdlog::info("fence singaled to: {}", target);
-
-    if (!test_fence.wait(target))
-    {
-        spdlog::error("fence wait failed");
-        return false;
-    }
-
-    spdlog::info("wait(target) returned, completed_value={}",
-             test_fence.completed_value());
-
-    //~ timeout on a value that will never be reached
-    const bool reached = test_fence.wait(target + 100, 50);
-    spdlog::info("wait unreachable 50ms returned {}", reached);
-
-    test_fence.deinitialize();
-    test_device.deinitialize();
 
     running_ = true;
     render_thread_ = std::thread(&render::render_thread_main, this);
@@ -67,7 +61,14 @@ void cots::graphics::render::deinitialize() noexcept
 {
     if (!running_.exchange(false)) return;
 
-    if (render_thread_.joinable()) render_thread_.join();
+    if (render_thread_.joinable())
+        render_thread_.join();
+
+    fence_    .deinitialize();
+    swapchain_.deinitialize();
+    device_   .deinitialize();
+
+    unsubscribe_events();
     spdlog::info(("Renderer deinitialized"));
 }
 
@@ -81,6 +82,36 @@ void cots::graphics::render::end_update()
 
 }
 
+cots::graphics::hardware::device& cots::graphics::render::device() noexcept
+{
+    return device_;
+}
+
+cots::graphics::hardware::swapchain& cots::graphics::render::swapchain() noexcept
+{
+    return swapchain_;
+}
+
+cots::graphics::hardware::fence& cots::graphics::render::fence() noexcept
+{
+    return fence_;
+}
+
+const cots::graphics::hardware::device & cots::graphics::render::device() const noexcept
+{
+    return device_;
+}
+
+const cots::graphics::hardware::swapchain & cots::graphics::render::swapchain() const noexcept
+{
+    return swapchain_;
+}
+
+const cots::graphics::hardware::fence & cots::graphics::render::fence() const noexcept
+{
+    return fence_;
+}
+
 void cots::graphics::render::render_thread_main()
 {
     spdlog::info("render thread started");
@@ -88,6 +119,28 @@ void cots::graphics::render::render_thread_main()
 
     while (running_.load(std::memory_order_acquire))
     {
+        //~ drain commands
+        {
+            std::lock_guard lock(command_mutex_);
+            if (has_pending_resize_)
+            {
+                const bool status = swapchain_.resize(
+                    device_,
+                    event_pending_resize_.width,
+                    event_pending_resize_.height
+                );
+                if (not status) spdlog::error("swapchain resize failed");
+                has_pending_resize_ = false;
+            }
+        }
+
+        //~ occlusion check
+        if (!swapchain_.check_occlusion())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
         begin_frame();
         //~ TODO: Record Cmds
         end_frame();
@@ -104,4 +157,25 @@ void cots::graphics::render::begin_frame()
 void cots::graphics::render::end_frame()
 {
 
+}
+
+void cots::graphics::render::subscribe_events()
+{
+    const auto dispatcher = feature::locator::resolve<events::dispatcher>();
+    dispatcher->subscribe<events::window_resized,
+    &render::on_window_resized>(*this);
+}
+
+void cots::graphics::render::unsubscribe_events()
+{
+    const auto dispatcher = feature::locator::resolve<events::dispatcher>();
+    dispatcher->unsubscribe<events::window_resized,
+    &render::on_window_resized>(*this);
+}
+
+void cots::graphics::render::on_window_resized(const events::window_resized &event)
+{
+    std::lock_guard lock(command_mutex_);
+    event_pending_resize_ = event;
+    has_pending_resize_   = true;
 }

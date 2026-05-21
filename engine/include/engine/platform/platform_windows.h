@@ -32,6 +32,13 @@ namespace cots::platform
         Pause   = 2
     };
 
+    //~ window configurations
+    enum class window_style: std::uint8_t
+    {
+        normal      = 0, //~ Overlapped window
+        borderless  = 1, // popup
+    };
+
     constexpr screen_state operator|(
         screen_state lhs,
         screen_state rhs) noexcept
@@ -121,13 +128,13 @@ namespace cots::platform
         }
 
         //~ setters
-        void set_style   (config::window_style style) const;
+        void set_style   (window_style style)                        const;
         void set_size    (std::uint32_t width, std::uint32_t height) const;
-        void set_position(std::uint32_t x,     std::uint32_t y) const;
-        void set_title   (const std::wstring& title) const;
-        void set_tile    (const std::string&  title) const;
-        void set_debug   (const std::string&  message) const;
-        void set_debug   (const std::wstring& message) const;
+        void set_position(std::uint32_t x,     std::uint32_t y)      const;
+        void set_title   (const std::wstring& title)                 const;
+        void set_tile    (const std::string&  title)                 const;
+        void set_debug   (const std::string&  message)               const;
+        void set_debug   (const std::wstring& message)               const;
 
         //~ helpers
         [[nodiscard]] HICON load_icon(const std::wstring& path, int size) const noexcept;
@@ -143,12 +150,12 @@ namespace cots::platform
         static constexpr auto CLASS_NAME = L"COTS";
 
         mutable
-        std::wstring        window_title_{ L"Cots" };
+        std::wstring        window_title_   { L"Cots" };
         config::size<int>   window_size_    {};
         HWND                window_handle_  { nullptr };
         HINSTANCE           window_instance_{ nullptr };
         screen_state        screen_state_   { screen_state::none };
-        status              status_         { status::Running };
+        status              status_         { status::Running    };
     };
 } // namespace cots
 

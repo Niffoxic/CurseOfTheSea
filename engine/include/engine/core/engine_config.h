@@ -6,6 +6,7 @@
 
 namespace cots::config
 {
+    //~ general
     template<typename T>
     requires std::is_arithmetic_v<T>
     struct size
@@ -28,12 +29,6 @@ namespace cots::config
         {
             return size<Type>(Type(width), Type(height));
         }
-    };
-
-    enum class window_style: std::uint8_t
-    {
-        normal      = 0, //~ Overlapped window
-        borderless  = 1, // popup
     };
 
     struct windows

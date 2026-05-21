@@ -45,6 +45,8 @@ void cots::engine::tick()
 {
     COTS_PROFILE_SCOPE("engine::tick");
     timer_->step();
+
+    test_debug_input();
     update_tickable();
 }
 
@@ -95,13 +97,13 @@ void cots::engine::regulate_tickable()
     REGISTER_FEATURE_TO_SCHEDULER(tickable_scheduler_, audio::system);
     REGISTER_FEATURE_TO_SCHEDULER(tickable_scheduler_, events::dispatcher);
 
-    auto render  = feature::locator::resolve<graphics::render>();
+    render_ = feature::locator::resolve<graphics::render>();
 
     tickable_scheduler_.register_type(std::ref(windows_));
-    tickable_scheduler_.register_type(std::ref(render));
+    tickable_scheduler_.register_type(std::ref(render_));
 
     //~ dependencies
-    tickable_scheduler_.add_dependency(render, windows_);
+    tickable_scheduler_.add_dependency(render_, windows_);
 }
 
 void cots::engine::update_tickable()
@@ -123,6 +125,48 @@ void cots::engine::update_tickable()
         if (iter)
         {
             iter->end_update();
+        }
+    }
+}
+
+void cots::engine::test_debug_input()
+{
+    const auto& kb = windows_->keyboard;
+    auto& sc = render_->swapchain();
+    const auto& dev = render_->device();
+
+    using mode = graphics::hardware::display_mode;
+
+    // toggle borderless <-> windowed
+    if (kb.pressed(VK_F11))
+    {
+        const auto cur = sc.current_mode();
+        sc.set_display_mode(dev, cur == mode::windowed ? mode::borderless : mode::windowed);
+    }
+
+    // exclusive fullscreen
+    if (kb.pressed(VK_F10))
+        sc.set_display_mode(dev, mode::exclusive_fullscreen);
+
+    // escape hatch back to windowed
+    if (kb.pressed(VK_F9))
+        sc.set_display_mode(dev, mode::windowed);
+
+    // resolution presets
+    if (kb.pressed('1')) sc.set_windowed_size(dev, 1280, 720);
+    if (kb.pressed('2')) sc.set_windowed_size(dev, 1600, 900);
+    if (kb.pressed('3')) sc.set_windowed_size(dev, 1920, 1080);
+
+    // dump display info
+    if (kb.pressed(VK_F8))
+    {
+        for (const auto& o : dev.outputs())
+        {
+            spdlog::info("output [{}] {} {}x{}{}",
+                         o.index, o.device_name, o.desktop_width, o.desktop_height,
+                         o.is_primary ? " [primary]" : "");
+            for (const auto& m : o.supported_modes)
+                spdlog::info("    {}x{} @ {:.0f}Hz", m.width, m.height, m.refresh_hz());
         }
     }
 }

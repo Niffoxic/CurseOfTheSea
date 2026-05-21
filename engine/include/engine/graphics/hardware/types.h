@@ -54,6 +54,13 @@ namespace cots::graphics::hardware
         d24_unorm_s8_uint,
     };
 
+    enum class display_mode : std::uint8_t
+    {
+        windowed             = 0,
+        borderless           = 1,
+        exclusive_fullscreen = 2,
+    };
+
 } // namespace cots::graphics::hardware
 
 #endif //CURSEOFTHESEA_TYPES_H

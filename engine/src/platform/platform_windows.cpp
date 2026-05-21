@@ -92,11 +92,11 @@ namespace cots::platform
         return status_ == status::Quit;
     }
 
-    void windows::set_style(const config::window_style style) const
+    void windows::set_style(const window_style style) const
     {
         if (!window_handle_) return;
 
-        const DWORD dw_style = (style == config::window_style::borderless)
+        const DWORD dw_style = (style == window_style::borderless)
             ? (WS_POPUP | WS_VISIBLE)
             : WS_OVERLAPPEDWINDOW;
 

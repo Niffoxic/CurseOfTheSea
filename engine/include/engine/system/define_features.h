@@ -5,7 +5,7 @@
 #include "feature_locator.h"
 #include "engine/utils/timer.h"
 #include "engine/platform/platform_windows.h"
-#include "../events/event_dispatcher.h"
+#include "engine/events/event_dispatcher.h"
 #include "engine/audio/audio_system.h"
 #include "engine/graphics/render.h"
 

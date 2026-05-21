@@ -124,7 +124,7 @@ bool cots::graphics::hardware::device::recreate(const device_create_info &info)
 
     spdlog::info("[hardware:device] recreating...");
 
-    events::publish<events::graphics::device_creation_attempted>();
+    events::publish<events::device::creation_attempted>();
 
     destroy_internal();
 
@@ -137,7 +137,7 @@ bool cots::graphics::hardware::device::recreate(const device_create_info &info)
         }
 
         last_info_ = info;
-        events::publish<events::graphics::device_validated>(
+        events::publish<events::device::validated>(
             adapter_info_.adapter_index);
 
         spdlog::info("[hardware:device] recreated on {}", adapter_info_.name);
@@ -165,7 +165,7 @@ bool cots::graphics::hardware::device::check_device_removed() const
     spdlog::error("[hardware:device] device removed (hr=0x{:08X})",
                   static_cast<std::uint32_t>(hr));
 
-    events::publish<events::graphics::device_lost>(hr);
+    events::publish<events::device::lost>(hr);
     return true;
 }
 
@@ -241,6 +241,9 @@ bool cots::graphics::hardware::device::create_internal(
     adapter_info_.is_wrap                = (desc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE) != 0;
     adapter_info_.adapter_index          =
         (info.preference == adapter_preference::manual) ? info.adapter_index : 0;
+    adapter_info_.adapter = adapter_;
+
+    enumerate_outputs();
 
     //~ info queue
     if (SUCCEEDED(device_->QueryInterface(IID_PPV_ARGS(&info_queue_))))
@@ -349,9 +352,8 @@ void cots::graphics::hardware::device::enumerate_adapters()
         entry.dedicated_video_memory = desc.DedicatedVideoMemory;
         entry.shared_memory          = desc.SharedSystemMemory;
         entry.is_wrap                = (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0;
-
+        entry.adapter = std::move(a);
         adapters_info_.push_back(std::move(entry));
-        a.Reset();
     }
 
     spdlog::info("[hardware:device] enumerated {} adapter(s)", adapters_info_.size());
@@ -367,64 +369,103 @@ void cots::graphics::hardware::device::enumerate_adapters()
 void cots::graphics::hardware::device::enumerate_outputs()
 {
     outputs_info_.clear();
-    if (!adapter_) return;
+    if (!adapter_ || !factory_) return;
 
-    Microsoft::WRL::ComPtr<IDXGIOutput> output;
-    for (UINT i = 0;
-         SUCCEEDED(adapter_->EnumOutputs(i, &output));
-         ++i)
+    //~ pull outputs from a given adapter
+    const auto collect_from = [this](IDXGIAdapter1* adp) -> std::uint32_t
     {
-        Microsoft::WRL::ComPtr<IDXGIOutput6> output6;
-        if (FAILED(output.As(&output6)))
+        std::uint32_t added = 0;
+        Microsoft::WRL::ComPtr<IDXGIOutput> output;
+
+        for (UINT i = 0;
+             SUCCEEDED(adp->EnumOutputs(i, &output));
+             ++i)
         {
-            output.Reset();
-            continue;
-        }
-
-        DXGI_OUTPUT_DESC1 desc{};
-        if (FAILED(output6->GetDesc1(&desc)))
-        {
-            spdlog::warn("[hardware:device] IDXGIOutput6::GetDesc failed");
-            continue;
-        }
-
-        output_info entry{};
-        entry.index           = i;
-        entry.device_name     = helpers::wide_to_utf8(desc.DeviceName);
-        entry.desktop_left    = desc.DesktopCoordinates.left;
-        entry.desktop_top     = desc.DesktopCoordinates.top;
-        entry.desktop_width   = static_cast<std::uint32_t>(desc.DesktopCoordinates.right - desc.DesktopCoordinates.left);
-        entry.desktop_height  = static_cast<std::uint32_t>(desc.DesktopCoordinates.bottom - desc.DesktopCoordinates.top);
-
-        //~ get supported modes
-        constexpr DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        UINT mode_count = 0;
-        output6->GetDisplayModeList(format, 0u, &mode_count, nullptr);
-
-        if (mode_count)
-        {
-            std::vector<DXGI_MODE_DESC1> modes(mode_count);
-            output6->GetDisplayModeList1(format, 0u, &mode_count, modes.data());
-
-            entry.supported_modes.reserve(mode_count);
-            for (const auto& mode : modes)
+            Microsoft::WRL::ComPtr<IDXGIOutput6> output6;
+            if (FAILED(output.As(&output6)))
             {
-                entry.supported_modes.push_back({
-                    mode.Width,
-                    mode.Height,
-                    mode.RefreshRate.Numerator,
-                    mode.RefreshRate.Denominator,
-                });
+                output.Reset();
+                continue;
             }
-            //~ highest resolution and highest refresh found
-            entry.native_mode = entry.supported_modes.back();
+
+            DXGI_OUTPUT_DESC1 desc{};
+            if (FAILED(output6->GetDesc1(&desc)))
+            {
+                spdlog::warn("[hardware:device] IDXGIOutput6::GetDesc1 failed");
+                output.Reset();
+                continue;
+            }
+
+            output_info entry{};
+            entry.index          = static_cast<std::uint32_t>(outputs_info_.size());
+            entry.device_name    = helpers::wide_to_utf8(desc.DeviceName);
+            entry.desktop_left   = desc.DesktopCoordinates.left;
+            entry.desktop_top    = desc.DesktopCoordinates.top;
+            entry.desktop_width  = static_cast<std::uint32_t>(
+                desc.DesktopCoordinates.right - desc.DesktopCoordinates.left);
+            entry.desktop_height = static_cast<std::uint32_t>(
+                desc.DesktopCoordinates.bottom - desc.DesktopCoordinates.top);
+
+            //~ supported modes
+            constexpr DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            UINT mode_count = 0;
+            output6->GetDisplayModeList1(format, 0u, &mode_count, nullptr);
+
+            if (mode_count)
+            {
+                std::vector<DXGI_MODE_DESC1> modes(mode_count);
+                if (SUCCEEDED(output6->GetDisplayModeList1(
+                        format, 0u, &mode_count, modes.data())))
+                {
+                    entry.supported_modes.reserve(mode_count);
+                    for (const auto& mode : modes)
+                    {
+                        entry.supported_modes.push_back({
+                            mode.Width,
+                            mode.Height,
+                            mode.RefreshRate.Numerator,
+                            mode.RefreshRate.Denominator,
+                        });
+                    }
+                    entry.native_mode = entry.supported_modes.back();
+                }
+            }
+
+            entry.is_primary = (entry.desktop_left == 0 && entry.desktop_top == 0);
+
+            outputs_info_.push_back(std::move(entry));
+            ++added;
+            output.Reset();
         }
+        return added;
+    };
 
-        //~ monitor at desktop (0,0)
-        entry.is_primary = (entry.desktop_left == 0 && entry.desktop_top == 0);
+    //~ try the render adapter first
+    collect_from(adapter_.Get());
 
-        outputs_info_.push_back(std::move(entry));
-        output.Reset();
+    // hybrid-laptop fallback
+    if (outputs_info_.empty())
+    {
+        spdlog::warn("[hardware:device] render adapter has no outputs, "
+                     "scanning all adapters (hybrid GPU?)");
+
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> a;
+        for (UINT i = 0;
+             SUCCEEDED(factory_->EnumAdapterByGpuPreference(
+                 i, DXGI_GPU_PREFERENCE_UNSPECIFIED, IID_PPV_ARGS(&a)));
+             ++i)
+        {
+            DXGI_ADAPTER_DESC1 ad{};
+            a->GetDesc1(&ad);
+            if (ad.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) { a.Reset(); continue; }
+
+            if (const auto n = collect_from(a.Get()); n > 0)
+            {
+                spdlog::info("[hardware:device] found {} output(s) on adapter '{}'",
+                             n, helpers::wide_to_utf8(ad.Description));
+            }
+            a.Reset();
+        }
     }
 
     spdlog::info("[hardware:device] enumerated {} output(s)", outputs_info_.size());
