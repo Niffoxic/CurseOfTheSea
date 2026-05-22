@@ -31,8 +31,13 @@ namespace cots::graphics::passes
     } //~ anonymouse namespace
 
     mesh_pass::mesh_pass(const graph::resource_handle backbuffer,
-                         const graph::resource_handle depth) noexcept
-        : backbuffer_(backbuffer), depth_(depth)
+                         const graph::resource_handle depth,
+                         const graph::resource_handle test_texture,
+                         const std::uint32_t          test_texture_index) noexcept
+        : backbuffer_(backbuffer)
+        , depth_(depth)
+        , test_texture_(test_texture)
+        , test_texture_index_(test_texture_index)
     {}
 
     void mesh_pass::declare(graph::declare_context& dc)
@@ -40,6 +45,11 @@ namespace cots::graphics::passes
         //~ color and depth are both written and depth is sampled for compare
         dc.write(backbuffer_, graph::resource_usage::render_target);
         dc.write(depth_,      graph::resource_usage::depth_write);
+
+        //~ sampled in pixel stage
+        // graph derives the transition
+        if (test_texture_.valid())
+            dc.read(test_texture_, graph::resource_usage::pixel_shader_resource);
     }
 
     bool mesh_pass::setup(const setup_context& sc)
@@ -265,10 +275,11 @@ namespace cots::graphics::passes
                 last_id = inst.mesh_index;
             }
 
-            //~ per object cb into this frames ring slot
+            //~ per object cb
+            //~ material holds the bindless slot
             object_constants oc{};
             oc.world    = inst.transform;
-            oc.material = inst.material_index;
+            oc.material = test_texture_index_;
 
             if (void* dst = object_ring_.cpu(f, drawn))
             {

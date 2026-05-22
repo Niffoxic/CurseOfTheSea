@@ -19,7 +19,9 @@ namespace cots::graphics::passes
     {
     public:
         mesh_pass(graph::resource_handle backbuffer,
-                  graph::resource_handle depth) noexcept;
+                  graph::resource_handle depth,
+                  graph::resource_handle test_texture,
+                  std::uint32_t          test_texture_index) noexcept;
 
         bool setup  (const setup_context& sc)    override;
         void declare(graph::declare_context& dc) override;
@@ -53,6 +55,8 @@ namespace cots::graphics::passes
 
         graph::resource_handle backbuffer_;
         graph::resource_handle depth_;
+        graph::resource_handle test_texture_;
+        std::uint32_t          test_texture_index_ { 0u };
 
         Microsoft::WRL::ComPtr<ID3D12RootSignature> root_sig_;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> pso_;

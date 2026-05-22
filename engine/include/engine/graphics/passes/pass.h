@@ -15,6 +15,8 @@ namespace cots::graphics
     {
         class device;
         class buffer_manager;
+        class texture_manager;
+        class descriptor_heap;
     } // namespace hardware
 
     namespace shaders{ class shader_cache;  }
@@ -22,10 +24,12 @@ namespace cots::graphics
 
     struct setup_context
     {
-        hardware::device&         device;
-        shaders::shader_cache&    shaders;
-        hardware::buffer_manager& buffers;
-        meshes::mesh_registry&    meshes;
+        hardware::device&          device;
+        shaders::shader_cache&     shaders;
+        hardware::buffer_manager&  buffers;
+        meshes::mesh_registry&     meshes;
+        hardware::texture_manager& textures;
+        hardware::descriptor_heap& bindless;
     };
 
     //~ everything a pass needs for one frame of recording
