@@ -5,6 +5,7 @@
 #include "engine/graphics/hardware/fence.h"
 #include "engine/graphics/hardware/swapchain.h"
 #include "engine/graphics/hardware/command_context.h"
+#include "engine/graphics/resource/depth_target.h"
 
 #include "engine/utils/profiler.h"
 
@@ -124,6 +125,7 @@ void cots::graphics::render::render_thread_main()
     shader_cache_ .deinitialize();
     mesh_registry_.deinitialize();
     buffers_      .deinitialize();
+    depth_target_ .deinitialize();
     fence_        .deinitialize();
     swapchain_    .deinitialize();
     device_       .deinitialize();
@@ -182,6 +184,55 @@ bool cots::graphics::render::initialize_render_thread()
         spdlog::info("[render] registered quad as mesh {}", id);
     }
 
+    //~ testing unit cube
+    {
+        static constexpr float positions[] =
+        {
+            //~ back face z = -0.5
+            -0.5f, -0.5f, -0.5f,   0.5f, -0.5f, -0.5f,
+             0.5f,  0.5f, -0.5f,  -0.5f,  0.5f, -0.5f,
+            //~ front face z = +0.5
+            -0.5f, -0.5f,  0.5f,   0.5f, -0.5f,  0.5f,
+             0.5f,  0.5f,  0.5f,  -0.5f,  0.5f,  0.5f,
+        };
+        static constexpr float colors[] =
+        {
+            1,0,0,  0,1,0,  0,0,1,  1,1,0,
+            1,0,1,  0,1,1,  1,1,1,  0.5f,0.5f,0.5f,
+        };
+        static constexpr std::uint16_t indices[] =
+        {
+            //~ back
+            0,1,2,   0,2,3,
+            //~ front
+            4,6,5,   4,7,6,
+            //~ left
+            0,3,7,   0,7,4,
+            //~ right
+            1,5,6,   1,6,2,
+            //~ bottom
+            0,4,5,   0,5,1,
+            //~ top
+            3,2,6,   3,6,7,
+        };
+
+        meshes::mesh_desc cd{};
+        cd.streams =
+        {
+            { "POSITION", positions, sizeof(positions), sizeof(float) * 3 },
+            { "COLOR",    colors,    sizeof(colors),    sizeof(float) * 3 },
+        };
+        cd.vertex_count = 8;
+        cd.index_data   = indices;
+        cd.index_bytes  = sizeof(indices);
+        cd.index_count  = 36;
+        cd.index_16bit  = true;
+        cd.debug_name   = "cube";
+
+        const auto id = mesh_registry_.create(cd);
+        spdlog::info("[render] registered cube as mesh {}", id);
+    }
+
     //~ initialize fence
     if (not fence_.initialize(device_))
     {
@@ -206,6 +257,12 @@ bool cots::graphics::render::initialize_render_thread()
         spdlog::error("swapchain init failed");
         return false;
     }
+
+    if (not depth_target_.initialize(device_, swapchain_.width(), swapchain_.height()))
+    {
+        spdlog::error("depth target init failed");
+        return false;
+    }
     //~ initialize contexts
     for (std::uint32_t i = 0; i < hardware::frame_count; ++i)
     {
@@ -219,7 +276,6 @@ bool cots::graphics::render::initialize_render_thread()
     frame_.index = 0u;
     frame_.submit_lists.reserve(hardware::max_submit_lists);
 
-    //~ Test
     //~ json in debug packed binary otherwise
 #if COTS_DEBUG
     auto storage = std::make_unique<shaders::json_shader_storage>("compiled/shader_cache.json");
@@ -259,6 +315,7 @@ void cots::graphics::render::draw_frame(const scene_snapshot& snap)
 
     using clock = std::chrono::steady_clock;
 
+    //~ TODO: warp this ins frame stats data or something later ig
     //~ RT-only accumulator - no sync needed, only this thread touches it
     static clock::time_point window_start = clock::now();
     static double            accum_ms     = 0.0;
@@ -319,13 +376,15 @@ void cots::graphics::render::record_frame(
 
     const pass_context pc
     {
-        .ctx         = ctx,
-        .snap        = snap,
-        .backbuffer  = swapchain_.current_backbuffer(),
-        .rtv_handle  = swapchain_.current_rtv_handle(),
-        .width       = swapchain_.width(),
-        .height      = swapchain_.height(),
-        .frame_index = frame,
+        .ctx          = ctx,
+        .snap         = snap,
+        .backbuffer   = swapchain_.current_backbuffer(),
+        .depth_target = depth_target_.resource(),
+        .rtv_handle   = swapchain_.current_rtv_handle(),
+        .dsv_handle   = depth_target_.dsv_handle(),
+        .width        = swapchain_.width(),
+        .height       = swapchain_.height(),
+        .frame_index  = frame,
     };
 
     for (const auto& p : passes_)
@@ -370,6 +429,10 @@ void cots::graphics::render::process_pending_commands()
         if (cmd.set_win_size) ok = swapchain_.set_windowed_size(device_, cmd.win_w, cmd.win_h) && ok;
         if (cmd.resize)       ok = swapchain_.resize           (device_, cmd.resize_w, cmd.resize_h) && ok;
         if (not ok) spdlog::error("[render] swapchain command(s) failed");
+
+        //~ rebuild depth target to match the new backbuffer size
+        if (not depth_target_.resize(device_, swapchain_.width(), swapchain_.height()))
+            spdlog::error("[render] depth target resize failed");
 
         frame_.fence_values.fill(flush);
         frame_.index = 0u;

@@ -130,6 +130,20 @@ namespace cots::graphics::hardware
         list_->ClearRenderTargetView(handle, color, 0, nullptr);
     }
 
+    void command_context::clear_depth_stencil(
+        const std::size_t   dsv_handle,
+        const float         depth,
+        const std::uint8_t  stencil
+    ) const
+    {
+        if (!is_open_ || dsv_handle == 0) return;
+
+        const D3D12_CPU_DESCRIPTOR_HANDLE handle{ dsv_handle };
+        constexpr D3D12_CLEAR_FLAGS flags =
+            D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL;
+        list_->ClearDepthStencilView(handle, flags, depth, stencil, 0, nullptr);
+    }
+
     void command_context::set_render_target(const std::size_t rtv_handle) const
     {
         if (!is_open_) return;
@@ -140,6 +154,23 @@ namespace cots::graphics::hardware
             &handle,
             FALSE,
             nullptr
+        );
+    }
+
+    void command_context::set_render_target(
+        const std::size_t rtv_handle,
+        const std::size_t dsv_handle
+    ) const
+    {
+        if (!is_open_) return;
+
+        const D3D12_CPU_DESCRIPTOR_HANDLE rtv{ rtv_handle };
+        const D3D12_CPU_DESCRIPTOR_HANDLE dsv{ dsv_handle };
+
+        list_->OMSetRenderTargets(1,
+            &rtv,
+            FALSE,
+            dsv_handle ? &dsv : nullptr
         );
     }
 

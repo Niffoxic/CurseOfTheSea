@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <wrl/client.h>
-
 #include "types.h"
 
 struct ID3D12CommandAllocator;
@@ -30,7 +29,7 @@ namespace cots::graphics::hardware
         [[nodiscard]] bool initialize  (const device& dev, command_list_type type = command_list_type::direct);
                       void deinitialize() noexcept;
 
-        // reset allocator and list for a fresh frame
+        //~ reset the allocator and the list for a fresh frame
         // wait for gpu to finish work before working on it
         [[nodiscard]] bool reset();
 
@@ -43,8 +42,10 @@ namespace cots::graphics::hardware
                         resource_state from,
                         resource_state to) const;
 
-        void clear_render_target(std::size_t rtv_handle, const float color[4]) const;
-        void set_render_target  (std::size_t rtv_handle) const;
+        void clear_render_target(std::size_t rtv_handle, const float color[4])              const;
+        void clear_depth_stencil(std::size_t dsv_handle, float depth, std::uint8_t stencil) const;
+        void set_render_target  (std::size_t rtv_handle)                                    const;
+        void set_render_target  (std::size_t rtv_handle, std::size_t dsv_handle)            const;
 
         [[nodiscard]] ID3D12GraphicsCommandList7* list() const noexcept;
 

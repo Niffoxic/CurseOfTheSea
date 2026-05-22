@@ -19,6 +19,7 @@
 #include "engine/graphics/hardware/command_context.h"
 #include "engine/graphics/shaders/shader_cache.h"
 #include "engine/graphics/hardware/buffer_manager.h"
+#include "resource/depth_target.h"
 
 #include "engine/events/windows_event.h"
 #include "engine/events/graphics_event.h"
@@ -122,9 +123,10 @@ namespace cots::graphics
         std::atomic<bool> render_ready_ { false };
 
         //~ systems
-        hardware::device    device_   {};
-        hardware::fence     fence_    {};
-        hardware::swapchain swapchain_{};
+        hardware::device        device_      {};
+        hardware::fence         fence_       {};
+        hardware::swapchain     swapchain_   {};
+        resource::depth_target  depth_target_{};
 
         //~ per frame in flight recording resources
         struct
