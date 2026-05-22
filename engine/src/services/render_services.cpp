@@ -21,9 +21,19 @@ namespace
         cam.up       = { up[0],  up[1],  up[2]  };
     }
 
+    void submit_instance(const int mesh_id, const float world[16], const int material_id)
+    {
+        auto& snap = render()->building_snapshot();
+        auto& inst = snap.instances.emplace_back();
+        std::memcpy(&inst.transform, world, sizeof(float) * 16);
+        inst.mesh_index     = static_cast<std::uint32_t>(mesh_id);
+        inst.material_index = static_cast<std::uint32_t>(material_id);
+    }
+
     void install(cots::module::services& s)
     {
-        s.render.set_camera = &set_camera;
+        s.render.set_camera      = &set_camera;
+        s.render.submit_instance = &submit_instance;
     }
 } // namespace anonymouse
 

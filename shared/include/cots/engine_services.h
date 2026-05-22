@@ -151,11 +151,19 @@ namespace cots::module
     }; // audio services
 
     //~ render services
+    enum mesh_id : std::int32_t
+    {
+        mesh_id_quad = 0,
+    };
+
     struct render_services
     {
         void (*set_camera)( const float view[16], const float proj[16],
                             const float pos[3], const float fwd[3],
                             const float up[3]);
+
+        //~ push one instance for this frame cleared each frame
+        void (*submit_instance)(int mesh_id, const float world[16], int material_id);
     }; // render services
 
     //~ master
