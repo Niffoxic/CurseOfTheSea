@@ -168,7 +168,7 @@ void cots::engine::test_fps() const
     static int  mt_frames    = 0;
     ++mt_frames;
 
-    const auto  now     = clock::now();
+    const auto  now = clock::now();
     const float elapsed = std::chrono::duration<float>(now - window_start).count();
 
     if (elapsed >= 0.5f)

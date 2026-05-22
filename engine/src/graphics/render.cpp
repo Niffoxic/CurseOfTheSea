@@ -378,7 +378,6 @@ void cots::graphics::render::submit_frame(const std::vector<ID3D12CommandList*> 
     );
 }
 
-
 void cots::graphics::render::subscribe_events()
 {
     const auto d = feature::locator::resolve<events::dispatcher>();
