@@ -24,6 +24,7 @@
 #include "engine/graphics/passes/pass.h"
 #include "engine/graphics/passes/clear_pass.h"
 #include "engine/graphics/passes/present_pass.h"
+#include "engine/graphics/passes/triangle_pass.h"
 
 //~ test
 #include "engine/graphics/shaders/storage/binary_storage.h"
@@ -345,11 +346,18 @@ bool cots::graphics::render::build_passes()
 {
     passes_.clear();
     passes_.push_back(std::make_unique<passes::clear_pass>());
+    passes_.push_back(std::make_unique<passes::triangle_pass>());
     passes_.push_back(std::make_unique<passes::present_pass>());
+
+    const setup_context sc
+    {
+        .device  = device_,
+        .shaders = shader_cache_,
+    };
 
     for (auto& p : passes_)
     {
-        if (not p->setup(device_))
+        if (not p->setup(sc))
         {
             spdlog::error("[render] pass '{}' setup failed", p->name());
             return false;

@@ -12,7 +12,14 @@ struct ID3D12Resource2;
 
 namespace cots::graphics
 {
-    namespace hardware { class device; }
+    namespace hardware { class device;       }
+    namespace shaders  { class shader_cache; }
+
+    struct setup_context
+    {
+        hardware::device&       device;
+        shaders::shader_cache&  shaders;
+    };
 
     //~ everything a pass needs for one frame of recording
     struct pass_context
@@ -40,7 +47,7 @@ namespace cots::graphics
         pass& operator=(pass&&)      = delete;
 
         //~ one-time GPU resource creation runs on the RT
-        virtual bool setup(hardware::device& dev) { (void)dev; return true; }
+        virtual bool setup(const setup_context& sc) { (void)sc; return true; }
 
         //~ per-frame recording
                       virtual       void execute(const pass_context& pc) = 0;
