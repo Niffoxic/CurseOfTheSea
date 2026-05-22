@@ -154,6 +154,7 @@ namespace cots::module
     enum mesh_id : std::int32_t
     {
         mesh_id_quad = 0,
+        mesh_id_cube = 1,
     };
 
     struct render_services
