@@ -77,6 +77,7 @@ namespace cots::graphics::graph
                                            D3D12_BARRIER_LAYOUT_COMMON };
             ID3D12Resource2* last_seen   { nullptr };
             bool             initialized { false };
+            bool             first_use   { false };
         };
 
         //~ internals

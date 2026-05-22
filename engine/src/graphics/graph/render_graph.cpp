@@ -182,6 +182,7 @@ namespace cots::graphics::graph
                 tracked.current     = to_barrier_state(resources_.initial_usage(h));
                 tracked.last_seen   = v.resource;
                 tracked.initialized = true;
+                tracked.first_use   = true;
             }
         }
     }
@@ -202,18 +203,22 @@ namespace cots::graphics::graph
             auto&            tracked  = states_[access.handle.index];
             const auto       required = to_barrier_state(access.usage);
 
-            if (tracked.current == required) return;
+            const bool first = tracked.first_use;
+            if (!first && tracked.current == required) return;
 
-            const bool discard =
+            const bool discard = first ||
                 tracked.current.layout == D3D12_BARRIER_LAYOUT_PRESENT ||
                 tracked.current.layout == D3D12_BARRIER_LAYOUT_COMMON;
 
             D3D12_TEXTURE_BARRIER b{};
-            b.SyncBefore   = tracked.current.sync;
+            b.SyncBefore   = first ? D3D12_BARRIER_SYNC_NONE
+                                   : tracked.current.sync;
             b.SyncAfter    = required.sync;
-            b.AccessBefore = tracked.current.access;
+            b.AccessBefore = first ? D3D12_BARRIER_ACCESS_NO_ACCESS
+                                   : tracked.current.access;
             b.AccessAfter  = required.access;
-            b.LayoutBefore = tracked.current.layout;
+            b.LayoutBefore = first ? D3D12_BARRIER_LAYOUT_UNDEFINED
+                                   : tracked.current.layout;
             b.LayoutAfter  = required.layout;
             b.pResource    = v.resource;
             b.Subresources = k_all_subresources;
@@ -221,7 +226,8 @@ namespace cots::graphics::graph
                                      : D3D12_TEXTURE_BARRIER_FLAG_NONE;
 
             scratch_barriers_.push_back(b);
-            tracked.current = required;
+            tracked.current   = required;
+            tracked.first_use = false;
         };
 
         for (const auto& a : node.reads)  process(a);
