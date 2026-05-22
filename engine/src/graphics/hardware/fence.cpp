@@ -47,7 +47,7 @@ bool cots::graphics::hardware::fence::initialize(
     }
 
     last_signaled_ = initial_value;
-    if (not fence_->SetName(L"COTS Fence"))
+    if (FAILED(fence_->SetName(L"COTS Fence")))
     {
         spdlog::error("SetName failed - very rare case");
     }

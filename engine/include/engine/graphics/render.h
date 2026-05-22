@@ -83,6 +83,11 @@ namespace cots::graphics
             return stat_frame_ms_.load(std::memory_order_relaxed);
         }
 
+        [[nodiscard]] bool is_ready() const noexcept
+        {
+            return render_ready_.load(std::memory_order_acquire);
+        }
+
     private:
         void render_thread_main      ();
         bool initialize_render_thread();

@@ -125,7 +125,7 @@ bool cots::graphics::hardware::device::recreate(const device_create_info &info)
 
     spdlog::info("[hardware:device] recreating...");
 
-    events::publish<events::device::creation_attempted>();
+    events::publish_threadsafe<events::device::creation_attempted>();
 
     destroy_internal();
 
@@ -138,7 +138,7 @@ bool cots::graphics::hardware::device::recreate(const device_create_info &info)
         }
 
         last_info_ = info;
-        events::publish<events::device::validated>(
+        events::publish_threadsafe<events::device::validated>(
             adapter_info_.adapter_index);
 
         spdlog::info("[hardware:device] recreated on {}", adapter_info_.name);
@@ -166,7 +166,7 @@ bool cots::graphics::hardware::device::check_device_removed() const
     spdlog::error("[hardware:device] device removed (hr=0x{:08X})",
                   static_cast<std::uint32_t>(hr));
 
-    events::publish<events::device::lost>(hr);
+    events::publish_threadsafe<events::device::lost>(hr);
     return true;
 }
 

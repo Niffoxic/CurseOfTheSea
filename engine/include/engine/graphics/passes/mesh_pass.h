@@ -38,6 +38,8 @@ namespace cots::graphics::passes
             };
             std::vector<stream> streams;
 
+            std::uint32_t vertex_count  { 0 };
+
             bool          indexed       { false };
             std::uint64_t index_address { 0 };
             std::uint32_t index_size    { 0 };

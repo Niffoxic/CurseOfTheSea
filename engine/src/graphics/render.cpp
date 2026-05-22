@@ -96,6 +96,7 @@ void cots::graphics::render::render_thread_main()
 
     spdlog::info("render thread started");
     SetThreadDescription(GetCurrentThread(), L"Cots Renderer");
+    COTS_PROFILE_THREAD_NAME("Render");
     frame_.start_time_ = std::chrono::steady_clock::now();
 
     while (running_.load(std::memory_order_relaxed))
@@ -110,6 +111,8 @@ void cots::graphics::render::render_thread_main()
 
         const bool had_new = acquire_snapshot();
         draw_frame(snapshots_.latest());
+
+        COTS_PROFILE_FRAME_MARK("Render");
     }
 
     if (not fence_.wait(fence_.last_signaled_value())) [[unlikely]]
@@ -130,6 +133,7 @@ void cots::graphics::render::render_thread_main()
 
 bool cots::graphics::render::initialize_render_thread()
 {
+    COTS_PROFILE_SCOPE("render::initialize_render_thread");
     //~ initialize device
     if (not device_.initialize())
     {
@@ -263,13 +267,25 @@ void cots::graphics::render::draw_frame(const scene_snapshot& snap)
     const auto frame_begin = clock::now();
     const std::uint32_t frame = frame_.index;
 
-    fence_.wait(frame_.fence_values[frame]);
+    {
+        COTS_PROFILE_SCOPE("render::draw_frame::wait");
+        fence_.wait(frame_.fence_values[frame]);
+    }
 
     frame_.submit_lists.clear();
-    record_frame(frame, snap, frame_.submit_lists);
-    submit_frame(frame_.submit_lists);
+    {
+        COTS_PROFILE_SCOPE("render::draw_frame::record");
+        record_frame(frame, snap, frame_.submit_lists);
+    }
+    {
+        COTS_PROFILE_SCOPE("render::draw_frame::submit");
+        submit_frame(frame_.submit_lists);
+    }
 
-    swapchain_.present(0);
+    {
+        COTS_PROFILE_SCOPE("render::draw_frame::present");
+        swapchain_.present(0);
+    }
 
     frame_.fence_values[frame] = fence_.signal(device_.graphics_queue());
     frame_.step();
@@ -296,6 +312,8 @@ void cots::graphics::render::record_frame(
     const scene_snapshot& snap,
     std::vector<ID3D12CommandList*>& out)
 {
+    COTS_PROFILE_SCOPE("render::record_frame");
+
     auto& ctx = frame_.contexts[frame];
     if (!ctx.reset()) return;
 
@@ -312,9 +330,7 @@ void cots::graphics::render::record_frame(
 
     for (const auto& p : passes_)
     {
-        COTS_GPU_PROFILE_BEGIN(ctx.list(), p->name(), 0xFF40C040);
         p->execute(pc);
-        COTS_GPU_PROFILE_END(ctx.list());
     }
 
     if (not ctx.close()) [[unlikely]]
@@ -327,6 +343,8 @@ void cots::graphics::render::record_frame(
 
 void cots::graphics::render::process_pending_commands()
 {
+    COTS_PROFILE_SCOPE("render::process_pending_commands");
+
     decltype(pending_) cmd;
     {
         std::lock_guard lock(command_mutex_);
@@ -334,8 +352,6 @@ void cots::graphics::render::process_pending_commands()
         cmd      = pending_;
         pending_ = {};
     }
-
-    COTS_PROFILE_SCOPE("render::pending_commands");
 
     //~ shader ops are CPU-only no GPU flush needed
     if (cmd.shader_save)   shader_cache_.flush();
@@ -389,6 +405,8 @@ bool cots::graphics::render::build_passes()
 
 void cots::graphics::render::submit_frame(const std::vector<ID3D12CommandList*> &lists) const
 {
+    COTS_PROFILE_SCOPE("render::submit_frame");
+
     //~ serial submission
     if (lists.empty()) return;
 
@@ -483,6 +501,8 @@ void cots::graphics::render::publish_snapshot()
 
 bool cots::graphics::render::acquire_snapshot()
 {
+    COTS_PROFILE_SCOPE("render::acquire_snapshot");
+
     const std::uint32_t pending =
         snapshots_.pending_idx.exchange(invalid_idx, std::memory_order_acquire);
 

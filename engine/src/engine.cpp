@@ -10,8 +10,6 @@
 #include "engine/platform/platform_windows.h"
 #include "engine/graphics/render.h"
 
-#include "engine/utils/profiler.h"
-
 #define REGISTER_FEATURE_TO_SCHEDULER(scheduler, feature_class) \
 do { \
 auto _cots_feat = ::cots::feature::locator::resolve<feature_class>(); \
@@ -44,7 +42,6 @@ bool cots::engine::init()
 
 void cots::engine::tick()
 {
-    COTS_PROFILE_SCOPE("engine::tick");
     timer_->step();
     test_fps();
     test_debug_input();

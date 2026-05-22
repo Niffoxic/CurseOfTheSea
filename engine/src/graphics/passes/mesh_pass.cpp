@@ -4,6 +4,7 @@
 #include "engine/graphics/hardware/buffer_manager.h"
 #include "engine/graphics/meshes/mesh_registry.h"
 #include "engine/graphics/shaders/shader_cache.h"
+#include "engine/utils/profiler.h"
 
 #include <d3d12.h>
 #include <DirectXMath.h>
@@ -85,6 +86,7 @@ namespace cots::graphics::passes
         {
             const auto* me = sc.meshes.get(id);
             resolved_mesh rm{};
+            rm.vertex_count = me->vertex_count;
             rm.streams.reserve(vs.input_layout->size());
 
             for (const auto& el : *vs.input_layout)
@@ -162,6 +164,8 @@ namespace cots::graphics::passes
 
     void mesh_pass::execute(const pass_context& pc)
     {
+        COTS_PROFILE_SCOPE("mesh_pass::execute");
+
         using namespace DirectX;
         auto* list            = pc.ctx.list();
         const std::uint32_t f = pc.frame_index;
@@ -268,7 +272,7 @@ namespace cots::graphics::passes
             else
             {
                 list->DrawInstanced(
-                    meshes_[inst.mesh_index].streams.empty() ? 0 : 0,
+                    rm.vertex_count,
                     1,
                     0,
                     0

@@ -347,7 +347,7 @@ namespace cots::graphics::hardware
 
         if (!create_backbuffer_views(dev)) return false;
 
-        events::publish<events::swapchain::resized>(
+        events::publish_threadsafe<events::swapchain::resized>(
             width_,
             height_
         );
@@ -360,7 +360,7 @@ namespace cots::graphics::hardware
     {
         if (!swapchain_) return initialize(dev, info);
 
-        events::publish<events::swapchain::will_recreate>();
+        events::publish_threadsafe<events::swapchain::will_recreate>();
 
         BOOL was_fullscreen = FALSE;
         swapchain_->GetFullscreenState(&was_fullscreen, nullptr);
@@ -372,7 +372,7 @@ namespace cots::graphics::hardware
 
         if (!initialize(dev, info)) return false;
 
-        events::publish<events::swapchain::recreated>(
+        events::publish_threadsafe<events::swapchain::recreated>(
             width_,
             height_,
             current_mode_
@@ -404,7 +404,7 @@ namespace cots::graphics::hardware
         if (ok)
         {
             current_mode_ = mode;
-            events::publish<events::swapchain::mode_changed>(mode);
+            events::publish_threadsafe<events::swapchain::mode_changed>(mode);
             spdlog::info("[hardware:swapchain] mode -> {}", static_cast<int>(mode));
         }
         return ok;
@@ -451,7 +451,7 @@ namespace cots::graphics::hardware
 
         if (hr == DXGI_STATUS_OCCLUDED)
         {
-            events::publish<events::swapchain::occluded>();
+            events::publish_threadsafe<events::swapchain::occluded>();
             is_occluded_ = true;
             return true;
         }
@@ -474,7 +474,7 @@ namespace cots::graphics::hardware
         if (const HRESULT hr = swapchain_->Present(0, DXGI_PRESENT_TEST); hr == S_OK)
         {
             is_occluded_ = false;
-            events::publish<events::swapchain::restored>();
+            events::publish_threadsafe<events::swapchain::restored>();
             return true;
         }
         return false;

@@ -23,7 +23,10 @@ namespace
 
     void submit_instance(const int mesh_id, const float world[16], const int material_id)
     {
-        auto& snap = render()->building_snapshot();
+        const auto r = render();
+        if (!r || !r->is_ready()) return;
+
+        auto& snap = r->building_snapshot();
         auto& inst = snap.instances.emplace_back();
         std::memcpy(&inst.transform, world, sizeof(float) * 16);
         inst.mesh_index     = static_cast<std::uint32_t>(mesh_id);

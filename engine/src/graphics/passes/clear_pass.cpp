@@ -1,6 +1,7 @@
 // Created by Niffoxic (Harsh Dubey)
 #include "engine/graphics/passes/clear_pass.h"
 #include "engine/graphics/hardware/types.h"
+#include "engine/utils/profiler.h"
 
 #include <cmath>
 
@@ -8,6 +9,8 @@ namespace cots::graphics::passes
 {
     void clear_pass::execute(const pass_context& pc)
     {
+        COTS_PROFILE_SCOPE("clear_pass::execute");
+
         pc.ctx.transition(pc.backbuffer,
                           hardware::resource_state::present,
                           hardware::resource_state::render_target);
