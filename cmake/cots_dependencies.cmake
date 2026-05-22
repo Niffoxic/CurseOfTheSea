@@ -51,6 +51,27 @@ function(cots_add_general_dependencies target)
     FetchContent_MakeAvailable(stb)
     target_include_directories(${target} PRIVATE ${stb_SOURCE_DIR})
 
+    # DirectXTex
+    set(BUILD_TOOLS    OFF CACHE BOOL "" FORCE)
+    set(BUILD_SAMPLE   OFF CACHE BOOL "" FORCE)
+    set(BUILD_DX11     OFF CACHE BOOL "" FORCE)
+    set(BUILD_DX12     ON  CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+            DirectXTex
+            GIT_REPOSITORY https://github.com/microsoft/DirectXTex.git
+            GIT_TAG sep2024
+            GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(DirectXTex)
+
+    if(TARGET Microsoft::DirectXTex)
+        target_link_libraries(${target} PRIVATE Microsoft::DirectXTex)
+    elseif(TARGET DirectXTex)
+        target_link_libraries(${target} PRIVATE DirectXTex)
+    else()
+        message(FATAL_ERROR "DirectXTex was fetched but no known DirectXTex CMake target was found!")
+    endif()
+
     # Tracy
     if(COTS_USE_TRACY)
         FetchContent_Declare(

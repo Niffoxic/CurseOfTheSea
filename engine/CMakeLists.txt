@@ -39,6 +39,8 @@ add_executable(engine
         src/graphics/hardware/descriptor_heap.cpp
         src/graphics/hardware/texture_manager.cpp
         src/graphics/utils/image_decode.cpp
+        src/graphics/textures/texture_baker.cpp
+        src/graphics/textures/texture_cache.cpp
 )
 
 cots_apply_compile_flags(engine)
