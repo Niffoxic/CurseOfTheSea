@@ -12,6 +12,8 @@ namespace cots::graphics::hardware { class buffer_manager; }
 
 namespace cots::graphics::meshes
 {
+    struct imported_model;
+
     using     mesh_id               = std::uint32_t;
     constexpr mesh_id invalid_mesh  = ~0u; //~ TODO: Should I create generalized Invalid Index probably better ig
 
@@ -68,6 +70,8 @@ namespace cots::graphics::meshes
         bool initialize  (hardware::buffer_manager& bm);
         void deinitialize();
 
+        [[nodiscard]] mesh_id       create_from_imported(const imported_model& m,
+                                                         const char* debug_name);
         [[nodiscard]] mesh_id       create(const mesh_desc& desc);
         [[nodiscard]] const mesh*   get   (mesh_id id) const;
         [[nodiscard]] std::uint32_t size  () const noexcept

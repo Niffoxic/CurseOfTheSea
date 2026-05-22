@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 #include <wrl/client.h>
+#include <span>
 
 #include "resource.h"
 
@@ -40,6 +41,10 @@ namespace cots::graphics::hardware
         //~ uploads run synchronously on the
         [[nodiscard]] buffer_handle create(const buffer_create_info& info);
 
+        //~ one flush for many buffers
+        [[nodiscard]]
+        std::vector<buffer_handle> create_batch(std::span<const buffer_create_info> infos);
+
         void destroy(buffer_handle h);
 
         //~ accessors for binding
@@ -65,6 +70,23 @@ namespace cots::graphics::hardware
 
         [[nodiscard]] std::uint32_t acquire_slot();
         bool upload_static(const slot& s, const void* data, std::uint64_t size) const;
+
+        //~ allocate without uploading
+        struct allocation_result
+        {
+            std::uint32_t index { 0 };
+            bool          ok    { false };
+        };
+        [[nodiscard]] allocation_result allocate_only(const buffer_create_info& info);
+
+        //~ payload for the batched upload
+        struct upload_record
+        {
+            slot*         dst;
+            const void*   data;
+            std::uint64_t size;
+        };
+        bool upload_batch(std::span<const upload_record> records) const;
 
     private:
         device*           device_ { nullptr };
