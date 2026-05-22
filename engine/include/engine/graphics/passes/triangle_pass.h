@@ -19,8 +19,11 @@ namespace cots::graphics::passes
     class triangle_pass final : public pass
     {
     public:
-        bool setup  (const setup_context& sc) override;
-        void execute(const pass_context& pc)  override;
+        explicit triangle_pass(graph::resource_handle backbuffer) noexcept;
+
+        bool setup  (const setup_context& sc)    override;
+        void declare(graph::declare_context& dc) override;
+        void execute(const pass_context& pc)     override;
 
         [[nodiscard]] const char* name() const noexcept override
         {
@@ -35,6 +38,8 @@ namespace cots::graphics::passes
             std::uint32_t size_bytes  { 0 };
             std::uint32_t stride      { 0 };
         };
+
+        graph::resource_handle backbuffer_;
 
         Microsoft::WRL::ComPtr<ID3D12RootSignature> root_sig_;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> pso_;

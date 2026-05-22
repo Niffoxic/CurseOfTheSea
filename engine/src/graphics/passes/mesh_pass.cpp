@@ -30,6 +30,18 @@ namespace cots::graphics::passes
         };
     } //~ anonymouse namespace
 
+    mesh_pass::mesh_pass(const graph::resource_handle backbuffer,
+                         const graph::resource_handle depth) noexcept
+        : backbuffer_(backbuffer), depth_(depth)
+    {}
+
+    void mesh_pass::declare(graph::declare_context& dc)
+    {
+        //~ color and depth are both written and depth is sampled for compare
+        dc.write(backbuffer_);
+        dc.write(depth_);
+    }
+
     bool mesh_pass::setup(const setup_context& sc)
     {
         auto* d3d = sc.device.d3d12_device();
@@ -175,6 +187,9 @@ namespace cots::graphics::passes
         auto* list            = pc.ctx.list();
         const std::uint32_t f = pc.frame_index;
 
+        const auto& bb = pc.resources.view(backbuffer_);
+        const auto& dp = pc.resources.view(depth_);
+
         //~ frame cb row major
         const XMMATRIX view = XMLoadFloat4x4(&pc.snap.camera.view);
         const XMMATRIX proj = XMLoadFloat4x4(&pc.snap.camera.projection);
@@ -186,7 +201,7 @@ namespace cots::graphics::passes
             std::memcpy(dst, &fc, sizeof(fc));
         }
 
-        pc.ctx.set_render_target(pc.rtv_handle, pc.dsv_handle);
+        pc.ctx.set_render_target(bb.view_handle, dp.view_handle);
 
         const D3D12_VIEWPORT vp
         {

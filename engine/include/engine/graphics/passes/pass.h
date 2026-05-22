@@ -3,12 +3,11 @@
 #define CURSEOFTHESEA_PASS_H
 
 #include <cstdint>
-#include <cstddef>
 
 #include "engine/graphics/hardware/command_context.h"
 #include "engine/graphics/render_snapshot.h"
-
-struct ID3D12Resource2;
+#include "engine/graphics/graph/resource_registry.h"
+#include "engine/graphics/graph/declare_context.h"
 
 namespace cots::graphics
 {
@@ -30,19 +29,17 @@ namespace cots::graphics
     };
 
     //~ everything a pass needs for one frame of recording
+    // graph owned resources, the pass looks up
+    // its handles to get the current pe -frame view (basically resource + RTV/DSV)
     struct pass_context
     {
-        hardware::command_context& ctx;
-        const scene_snapshot&      snap;
+        hardware::command_context&        ctx;
+        const scene_snapshot&             snap;
+        const graph::resource_registry&   resources;
 
-        ID3D12Resource2*           backbuffer;   //~ TODO: generalizes to named resources later
-        ID3D12Resource2*           depth_target;
-        std::size_t                rtv_handle;
-        std::size_t                dsv_handle;
-
-        std::uint32_t              width;
-        std::uint32_t              height;
-        std::uint32_t              frame_index;
+        std::uint32_t                     width;
+        std::uint32_t                     height;
+        std::uint32_t                     frame_index;
     };
 
     class pass
@@ -57,7 +54,15 @@ namespace cots::graphics
         pass& operator=(pass&&)      = delete;
 
         //~ one-time GPU resource creation runs on the RT
-        virtual bool setup(const setup_context& sc) { (void)sc; return true; }
+        virtual bool setup(const setup_context& sc)
+        {
+            (void)sc;
+            return true;
+        }
+
+        //~ advertise resource reads or writes to the graph
+        // TODO: they don't drive barriers yet
+        virtual void declare(graph::declare_context& dc) { (void)dc; }
 
         //~ per-frame recording
                       virtual       void execute(const pass_context& pc) = 0;

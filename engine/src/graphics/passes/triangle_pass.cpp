@@ -56,6 +56,15 @@ namespace cots::graphics::passes
         }
     } // namespace anonymous
 
+    triangle_pass::triangle_pass(const graph::resource_handle backbuffer) noexcept
+        : backbuffer_(backbuffer)
+    {}
+
+    void triangle_pass::declare(graph::declare_context& dc)
+    {
+        dc.write(backbuffer_);
+    }
+
     bool triangle_pass::setup(const setup_context& sc)
     {
         auto* d3d = sc.device.d3d12_device();
@@ -195,7 +204,8 @@ namespace cots::graphics::passes
     {
         auto* list = pc.ctx.list();
 
-        pc.ctx.set_render_target(pc.rtv_handle);
+        const auto& bb = pc.resources.view(backbuffer_);
+        pc.ctx.set_render_target(bb.view_handle);
 
         const D3D12_VIEWPORT vp
         {

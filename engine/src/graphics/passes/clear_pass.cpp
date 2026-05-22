@@ -7,22 +7,36 @@
 
 namespace cots::graphics::passes
 {
+    clear_pass::clear_pass(const graph::resource_handle backbuffer,
+                           const graph::resource_handle depth) noexcept
+        : backbuffer_(backbuffer), depth_(depth)
+    {}
+
+    void clear_pass::declare(graph::declare_context& dc)
+    {
+        dc.write(backbuffer_);
+        dc.write(depth_);
+    }
+
     void clear_pass::execute(const pass_context& pc)
     {
         COTS_PROFILE_SCOPE("clear_pass::execute");
 
-        pc.ctx.transition(pc.backbuffer,
+        const auto& bb = pc.resources.view(backbuffer_);
+        const auto& dp = pc.resources.view(depth_);
+
+        pc.ctx.transition(bb.resource,
                           hardware::resource_state::present,
                           hardware::resource_state::render_target);
 
-        if (pc.depth_target)
+        if (dp.resource)
         {
-            pc.ctx.transition(pc.depth_target,
+            pc.ctx.transition(dp.resource,
                               hardware::resource_state::common,
                               hardware::resource_state::depth_write);
         }
 
-        pc.ctx.set_render_target(pc.rtv_handle, pc.dsv_handle);
+        pc.ctx.set_render_target(bb.view_handle, dp.view_handle);
 
         //~ snapshot driven color
         const float t = static_cast<float>(pc.snap.frame_id) * 0.01f;
@@ -34,7 +48,7 @@ namespace cots::graphics::passes
             1.0f
         };
         //~ clear handles for the frame
-        pc.ctx.clear_render_target(pc.rtv_handle, color);
-        pc.ctx.clear_depth_stencil(pc.dsv_handle, 0.0f, 0);
+        pc.ctx.clear_render_target(bb.view_handle, color);
+        pc.ctx.clear_depth_stencil(dp.view_handle, 0.0f, 0);
     }
 } // namespace cots::graphics::passes

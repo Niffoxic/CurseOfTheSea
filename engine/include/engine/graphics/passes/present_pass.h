@@ -6,17 +6,25 @@
 
 namespace cots::graphics::passes
 {
-    //~ terminal node
+    //~ terminal node transitions backbuffer to present and resets depth
     class present_pass final : public pass
     {
     public:
-        void execute(const pass_context& pc) override;
+        present_pass(graph::resource_handle backbuffer,
+                     graph::resource_handle depth) noexcept;
+
+        void declare(graph::declare_context& dc) override;
+        void execute(const pass_context& pc)     override;
 
         [[nodiscard]] const char* name() const noexcept override
         {
             return "present_pass";
         }
+
+    private:
+        graph::resource_handle backbuffer_;
+        graph::resource_handle depth_;
     };
-} // namespace cots::graphics::graph
+} // namespace cots::graphics::passes
 
 #endif //CURSEOFTHESEA_PRESENT_PASS_H
