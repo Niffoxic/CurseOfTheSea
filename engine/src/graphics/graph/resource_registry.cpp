@@ -1,0 +1,76 @@
+// Created by Niffoxic (Harsh Dubey)
+#include "engine/graphics/graph/resource_registry.h"
+#include "engine/core/cots_assert.h"
+
+namespace cots::graphics::graph
+{
+    namespace
+    {
+        constexpr resource_view k_empty_view{};
+    } // namespace anonymous
+
+    resource_handle resource_registry::import(const char* debug_name,
+                                              resource_provider provider)
+    {
+        COTS_ASSERT(provider && "resource_registry::import requires a provider");
+
+        const std::uint32_t index = static_cast<std::uint32_t>(entries_.size());
+        const std::uint32_t gen   = next_generation_++;
+
+        entry e{};
+        e.debug_name = debug_name ? debug_name : "<unnamed>";
+        e.provider   = std::move(provider);
+        e.generation = gen;
+        entries_.push_back(std::move(e));
+
+        const resource_handle h{ index, gen };
+        imports_.push_back(h);
+        return h;
+    }
+
+    void resource_registry::refresh()
+    {
+        for (auto& e : entries_)
+        {
+            if (e.generation == 0) continue;
+            e.cached = e.provider ? e.provider() : resource_view{};
+        }
+    }
+
+    void resource_registry::clear()
+    {
+        entries_.clear();
+        imports_.clear();
+    }
+
+    const resource_view& resource_registry::view(const resource_handle h) const
+    {
+        if (!exists(h))
+            return k_empty_view;
+        return entries_[h.index].cached;
+    }
+
+    const char* resource_registry::debug_name(const resource_handle h) const
+    {
+        if (!exists(h))
+            return "<invalid>";
+        return entries_[h.index].debug_name.c_str();
+    }
+
+    bool resource_registry::exists(const resource_handle h) const noexcept
+    {
+        if (!h.valid())                       return false;
+        if (h.index >= entries_.size())       return false;
+        return entries_[h.index].generation == h.generation;
+    }
+
+    std::uint32_t resource_registry::size() const noexcept
+    {
+        return static_cast<std::uint32_t>(entries_.size());
+    }
+
+    const std::vector<resource_handle>& resource_registry::imports() const noexcept
+    {
+        return imports_;
+    }
+} // namespace cots::graphics::graph

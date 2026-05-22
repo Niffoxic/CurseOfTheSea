@@ -34,6 +34,8 @@ add_executable(engine
         src/graphics/meshes/mesh_registry.cpp
         src/graphics/passes/mesh_pass.cpp
         src/graphics/resource/depth_target.cpp
+        src/graphics/graph/resource_registry.cpp
+        src/graphics/graph/render_graph.cpp
 )
 
 cots_apply_compile_flags(engine)
