@@ -36,6 +36,16 @@ namespace cots::graphics::shaders
         std::string_view source_name{ "<memory>" };  //~ for diagnostics
     };
 
+    //~ a resource bound by the shader
+    struct reflected_binding
+    {
+        std::string   name           {};
+        std::uint32_t bind_point     { 0 };
+        std::uint32_t register_space { 0 };
+        std::uint32_t bind_count     { 1 };
+        std::uint32_t type           { 0 };
+    };
+
     class shader_compiler final
     {
     public:
@@ -48,10 +58,12 @@ namespace cots::graphics::shaders
         [[nodiscard]] bool initialize  ();
                       void deinitialize() noexcept;
 
-        //~ compiles hlsl to dxil  optionally reflects the vertex input layout
+        //~ compile hlsl to dxil
         [[nodiscard]] bool compile(const shader_compile_desc& desc,
                                    std::vector<std::uint8_t>& out_dxil,
-                                   std::vector<vertex_input_element>* out_layout = nullptr
+                                   std::vector<vertex_input_element>* out_layout = nullptr,
+                                   std::vector<reflected_binding>*    out_bindings = nullptr,
+                                   std::vector<std::uint8_t>*         out_embedded_root_sig = nullptr
         ) const;
 
         [[nodiscard]] static const wchar_t* profile_for(shader_stage stage) noexcept;

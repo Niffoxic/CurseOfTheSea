@@ -8,17 +8,19 @@
 #include <unordered_map>
 
 #include "engine/graphics/shaders/vertex_layout.h"
+#include "engine/graphics/shaders/shader_compiler.h"
 
 namespace cots::graphics::shaders
 {
-    constexpr std::uint32_t k_cache_schema_version = 2;
+    //~ bump on any new entry field
+    constexpr std::uint32_t k_cache_schema_version = 3;
 
-    //~ engine-wide depth pipeline constants these get recorded in every cache
+    //~ engine wide depth pipeline constants these get recorded in every cache
     constexpr std::uint32_t k_engine_depth_format = 20u;
 
-    //~ packed bits 0 = depth enable, 1 = depth write,
+    //~ packed bits 0 = depth enable 1 = depth write
     //  bits 4..7 = D3D12 comparison func
-    //  current values are depth on, write, GREATER = 5 for reversed z
+    //  current values are depth on write GREATER = 5 for reversed z
     constexpr std::uint32_t k_engine_depth_state =
         (1u << 0) | (1u << 1) | (5u << 4);
 
@@ -35,6 +37,12 @@ namespace cots::graphics::shaders
 
         std::uint32_t depth_format{ 0 };
         std::uint32_t depth_state { 0 };
+
+        //~ bound resources reflected from the bytecode
+        std::vector<reflected_binding> bindings;
+
+        //~ embedded root signature if the shader has one
+        std::vector<std::uint8_t>      embedded_root_sig;
     };
 
     using cache_map = std::unordered_map<std::uint64_t, shader_cache_entry>;
@@ -56,4 +64,3 @@ namespace cots::graphics::shaders
 } // namespace cots::graphics::shaders
 
 #endif
-

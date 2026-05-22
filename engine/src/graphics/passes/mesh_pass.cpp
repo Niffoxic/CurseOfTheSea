@@ -4,6 +4,7 @@
 #include "engine/graphics/hardware/buffer_manager.h"
 #include "engine/graphics/meshes/mesh_registry.h"
 #include "engine/graphics/shaders/shader_cache.h"
+#include "engine/graphics/shaders/root_sig_builder.h"
 #include "engine/utils/profiler.h"
 
 #include <d3d12.h>
@@ -78,7 +79,17 @@ namespace cots::graphics::passes
             return false;
         }
 
-        if (FAILED(d3d->CreateRootSignature(0, vs.data, vs.size, IID_PPV_ARGS(&root_sig_))))
+        //~ build or extract the root signature
+        const shaders::shader_bytecode stages[] = { vs, ps };
+        std::vector<std::uint8_t> rs_blob;
+        if (!shaders::build_program_root_sig(stages, rs_blob) || rs_blob.empty())
+        {
+            spdlog::error("[mesh] root sig build failed");
+            return false;
+        }
+
+        if (FAILED(d3d->CreateRootSignature(
+                0, rs_blob.data(), rs_blob.size(), IID_PPV_ARGS(&root_sig_))))
         {
             spdlog::error("[mesh] CreateRootSignature failed");
             return false;

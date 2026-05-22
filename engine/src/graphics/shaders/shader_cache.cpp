@@ -83,13 +83,17 @@ namespace cots::graphics::shaders
             return {
                 it->second.dxil.data(),
                 it->second.dxil.size(),
-                &it->second.input_layout
+                &it->second.input_layout,
+                &it->second.bindings,
+                &it->second.embedded_root_sig,
             };
         }
 
         spdlog::info("[shader] compiling: {}", identifier);
         std::vector<std::uint8_t>         dxil;
         std::vector<vertex_input_element> layout;
+        std::vector<reflected_binding>    bindings;
+        std::vector<std::uint8_t>         embedded_rs;
 
         const shader_compile_desc desc
         {
@@ -100,21 +104,26 @@ namespace cots::graphics::shaders
         };
 
         const bool want_layout = (stage == shader_stage::vertex);
-        if (!compiler_.compile(desc, dxil, want_layout ? &layout : nullptr))
+        if (!compiler_.compile(desc, dxil,
+                               want_layout ? &layout : nullptr,
+                               &bindings,
+                               &embedded_rs))
         {
             spdlog::error("[shader] compile failed: {}", identifier);
             return {};   //~ leaves any existing entry untouched
         }
 
         auto& slot = entries_[key];
-        slot.key            = key;
-        slot.schema_version = k_cache_schema_version;
-        slot.source_hash    = shash;
-        slot.identifier     = identifier;
-        slot.dxil           = std::move(dxil);
-        slot.input_layout   = std::move(layout);
-        slot.depth_format   = k_engine_depth_format;
-        slot.depth_state    = k_engine_depth_state;
+        slot.key               = key;
+        slot.schema_version    = k_cache_schema_version;
+        slot.source_hash       = shash;
+        slot.identifier        = identifier;
+        slot.dxil              = std::move(dxil);
+        slot.input_layout      = std::move(layout);
+        slot.bindings          = std::move(bindings);
+        slot.embedded_root_sig = std::move(embedded_rs);
+        slot.depth_format      = k_engine_depth_format;
+        slot.depth_state       = k_engine_depth_state;
 
         if (storage_ && !storage_->store_one(slot, entries_))
         {
@@ -125,7 +134,9 @@ namespace cots::graphics::shaders
     {
             slot.dxil.data(),
             slot.dxil.size(),
-            &slot.input_layout
+            &slot.input_layout,
+            &slot.bindings,
+            &slot.embedded_root_sig,
         };
     }
 

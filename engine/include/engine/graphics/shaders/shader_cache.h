@@ -17,7 +17,9 @@ namespace cots::graphics::shaders
         const std::uint8_t* data { nullptr };
         std::size_t         size { 0 };
 
-        const std::vector<vertex_input_element>* input_layout { nullptr };
+        const std::vector<vertex_input_element>* input_layout       { nullptr };
+        const std::vector<reflected_binding>*    bindings           { nullptr };
+        const std::vector<std::uint8_t>*         embedded_root_sig  { nullptr };
 
         [[nodiscard]] bool valid() const noexcept
         {
@@ -28,7 +30,7 @@ namespace cots::graphics::shaders
     class shader_cache final
     {
     public:
-         shader_cache() = default;
+        shader_cache() = default;
         ~shader_cache();
 
         shader_cache           (const shader_cache&) = delete;
@@ -46,8 +48,8 @@ namespace cots::graphics::shaders
             shader_stage     stage
         );
 
-        void clear();                       //~ wipe in-memory and on-disk force cold
-        bool recompile(std::uint64_t key);  //~ force one entry stale and rebuild (0 = all)
+        void clear();
+        bool recompile(std::uint64_t key);
 
     private:
         shader_compiler                  compiler_;

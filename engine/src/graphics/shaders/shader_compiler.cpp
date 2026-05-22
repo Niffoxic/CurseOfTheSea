@@ -49,6 +49,79 @@ namespace cots::graphics::shaders
             }
         }
 
+        //~ reflect the bound resources
+        bool reflect_bindings(IDxcUtils* utils, IDxcResult* result,
+                              std::vector<reflected_binding>& out)
+        {
+            out.clear();
+
+            Microsoft::WRL::ComPtr<IDxcBlob> refl_blob;
+            if (FAILED(result->GetOutput(DXC_OUT_REFLECTION,
+                       IID_PPV_ARGS(&refl_blob), nullptr)) || !refl_blob)
+            {
+                spdlog::error("[shader] no reflection output for bindings");
+                return false;
+            }
+
+            DxcBuffer refl_buf{};
+            refl_buf.Ptr      = refl_blob->GetBufferPointer();
+            refl_buf.Size     = refl_blob->GetBufferSize();
+            refl_buf.Encoding = DXC_CP_ACP;
+
+            Microsoft::WRL::ComPtr<ID3D12ShaderReflection> refl;
+            if (FAILED(utils->CreateReflection(&refl_buf, IID_PPV_ARGS(&refl))))
+            {
+                spdlog::error("[shader] CreateReflection failed");
+                return false;
+            }
+
+            D3D12_SHADER_DESC sd{};
+            if (FAILED(refl->GetDesc(&sd)))
+            {
+                spdlog::error("[shader] reflection GetDesc failed");
+                return false;
+            }
+
+            out.reserve(sd.BoundResources);
+            for (UINT i = 0; i < sd.BoundResources; ++i)
+            {
+                D3D12_SHADER_INPUT_BIND_DESC b{};
+                if (FAILED(refl->GetResourceBindingDesc(i, &b))) continue;
+
+                reflected_binding rb{};
+                rb.name           = b.Name ? b.Name : "";
+                rb.bind_point     = b.BindPoint;
+                rb.register_space = b.Space;
+                rb.bind_count     = b.BindCount;
+                rb.type           = static_cast<std::uint32_t>(b.Type);
+                out.push_back(std::move(rb));
+            }
+            return true;
+        }
+
+        //~ pull embedded root signature
+        bool extract_root_sig(IDxcResult* result,
+                              std::vector<std::uint8_t>& out)
+        {
+            out.clear();
+
+            //~ no rootsig output kind means no embedded root sig
+            if (!result->HasOutput(DXC_OUT_ROOT_SIGNATURE))
+                return false;
+
+            Microsoft::WRL::ComPtr<IDxcBlob> blob;
+            if (FAILED(result->GetOutput(DXC_OUT_ROOT_SIGNATURE,
+                       IID_PPV_ARGS(&blob), nullptr)) || !blob)
+                return false;
+
+            const auto* bytes = static_cast<const std::uint8_t*>(blob->GetBufferPointer());
+            const auto  size  = blob->GetBufferSize();
+            if (size == 0) return false;
+
+            out.assign(bytes, bytes + size);
+            return true;
+        }
+
         bool reflect_input_layout(IDxcUtils* utils, IDxcResult* result,
                                   std::vector<vertex_input_element>& out)
         {
@@ -153,7 +226,9 @@ namespace cots::graphics::shaders
     bool shader_compiler::compile(
         const shader_compile_desc &desc,
         std::vector<std::uint8_t> &out_dxil,
-        std::vector<vertex_input_element> *out_layout) const
+        std::vector<vertex_input_element>* out_layout,
+        std::vector<reflected_binding>*    out_bindings,
+        std::vector<std::uint8_t>*         out_embedded_root_sig) const
     {
         if (!compiler_) return false;
 
@@ -218,6 +293,21 @@ namespace cots::graphics::shaders
                 spdlog::warn("[shader] input-layout reflection failed for {}",
                 desc.source_name);
             }
+        }
+
+        if (out_bindings)
+        {
+            if (!reflect_bindings(utils_.Get(), result.Get(), *out_bindings))
+            {
+                spdlog::warn("[shader] resource binding reflection failed for {}",
+                             desc.source_name);
+            }
+        }
+
+        if (out_embedded_root_sig)
+        {
+            //~ silent on absence
+            (void)extract_root_sig(result.Get(), *out_embedded_root_sig);
         }
         return true;
     }

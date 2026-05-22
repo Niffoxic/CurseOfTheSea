@@ -10,7 +10,7 @@ namespace cots::graphics::shaders
     namespace
     {
         constexpr std::uint32_t k_magic   = 0x31435343;
-        constexpr std::uint32_t k_version = 3;
+        constexpr std::uint32_t k_version = 4;
 
         template<typename T> void wr(std::ofstream& f, const T& v)
         {
@@ -20,7 +20,7 @@ namespace cots::graphics::shaders
         {
             return static_cast<bool>(f.read(reinterpret_cast<char*>(&v), sizeof(T)));
         }
-    }
+    } // namespace anonymous
 
     bool binary_shader_storage::write_entry(std::ofstream& f, const shader_cache_entry& e)
     {
@@ -47,9 +47,28 @@ namespace cots::graphics::shaders
             wr(f, el.input_slot);
         }
 
-        //~ depth pipeline info (schema v2 / file version 3)
+        //~ depth pipeline info
         wr(f, e.depth_format);
         wr(f, e.depth_state);
+
+        //~ reflected bindings
+        wr(f, static_cast<std::uint32_t>(e.bindings.size()));
+        for (const auto& b : e.bindings)
+        {
+            wr(f, static_cast<std::uint32_t>(b.name.size()));
+            f.write(b.name.data(),
+                    static_cast<std::streamsize>(b.name.size()));
+            wr(f, b.bind_point);
+            wr(f, b.register_space);
+            wr(f, b.bind_count);
+            wr(f, b.type);
+        }
+
+        //~ embedded root sig
+        wr(f, static_cast<std::uint32_t>(e.embedded_root_sig.size()));
+        f.write(reinterpret_cast<const char*>(e.embedded_root_sig.data()),
+                static_cast<std::streamsize>(e.embedded_root_sig.size()));
+
         return static_cast<bool>(f);
     }
 
@@ -125,6 +144,43 @@ namespace cots::graphics::shaders
             //~ depth pipeline info
             if (!rd(f, e.depth_format) || !rd(f, e.depth_state))
                 break;
+
+            //~ reflected bindings
+            std::uint32_t bind_count = 0;
+            if (!rd(f, bind_count))
+                break;
+            e.bindings.reserve(bind_count);
+            bool ok_bindings = true;
+            for (std::uint32_t i = 0; i < bind_count; ++i)
+            {
+                reflected_binding b{};
+                std::uint32_t name_len = 0;
+                if (!rd(f, name_len))
+                {
+                    ok_bindings = false;
+                    break;
+                }
+                b.name.resize(name_len);
+                f.read(b.name.data(), name_len);
+                if (!rd(f, b.bind_point)     ||
+                    !rd(f, b.register_space) ||
+                    !rd(f, b.bind_count)     ||
+                    !rd(f, b.type))
+                {
+                    ok_bindings = false;
+                    break;
+                }
+                e.bindings.push_back(std::move(b));
+            }
+            if (!ok_bindings || !f) break;
+
+            //~ embedded root sig
+            std::uint32_t rs_len = 0;
+            if (!rd(f, rs_len))
+                break;
+            e.embedded_root_sig.resize(rs_len);
+            if (rs_len > 0)
+                f.read(reinterpret_cast<char*>(e.embedded_root_sig.data()), rs_len);
 
             out[e.key] = std::move(e);
         }

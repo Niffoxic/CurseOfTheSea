@@ -63,6 +63,26 @@ namespace cots::graphics::shaders
                     e.input_layout.push_back(std::move(el));
                 }
             }
+
+            if (je.contains("bindings"))
+            {
+                for (const auto& jb : je["bindings"])
+                {
+                    reflected_binding b{};
+                    b.name           = jb.value("name", "");
+                    b.bind_point     = jb.value("bind_point", 0u);
+                    b.register_space = jb.value("space", 0u);
+                    b.bind_count     = jb.value("count", 1u);
+                    b.type           = jb.value("type", 0u);
+                    e.bindings.push_back(std::move(b));
+                }
+            }
+
+            if (je.contains("root_sig"))
+            {
+                e.embedded_root_sig = helpers::b64_decode(je.value("root_sig", ""));
+            }
+
             out.emplace(e.key, std::move(e));
         }
         spdlog::info("[shader] loaded {} cached shader(s) (json)", out.size());
@@ -76,7 +96,7 @@ namespace cots::graphics::shaders
             std::filesystem::path(path_).parent_path(), ec);
 
         nlohmann::json j;
-        j["version"] = 1;
+        j["version"] = 2;
         auto& arr = j["entries"] = nlohmann::json::array();
         for (const auto &e: in | std::views::values)
         {
@@ -90,6 +110,17 @@ namespace cots::graphics::shaders
                     { "input_slot",     el.input_slot     },
                 });
 
+            nlohmann::json bindings = nlohmann::json::array();
+            for (const auto& b : e.bindings)
+                bindings.push_back(
+            {
+                    { "name",       b.name           },
+                    { "bind_point", b.bind_point     },
+                    { "space",      b.register_space },
+                    { "count",      b.bind_count     },
+                    { "type",       b.type           },
+                });
+
             arr.push_back({
                 { "key",            std::format("{:016x}", e.key)         },
                 { "schema_version", e.schema_version                      },
@@ -97,6 +128,8 @@ namespace cots::graphics::shaders
                 { "id",             e.identifier                          },
                 { "dxil",           helpers::b64_encode(e.dxil)           },
                 { "layout",         layout                                },
+                { "bindings",       bindings                              },
+                { "root_sig",       helpers::b64_encode(e.embedded_root_sig) },
                 { "depth_format",   e.depth_format                        },
                 { "depth_state",    e.depth_state                         },
             });

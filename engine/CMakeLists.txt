@@ -41,6 +41,7 @@ add_executable(engine
         src/graphics/utils/image_decode.cpp
         src/graphics/textures/texture_baker.cpp
         src/graphics/textures/texture_cache.cpp
+        src/graphics/shaders/root_sig_builder.cpp
 )
 
 cots_apply_compile_flags(engine)
