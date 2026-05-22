@@ -20,7 +20,7 @@ namespace cots::graphics::shaders
                 default:                    return "xx";
             }
         }
-    }
+    } // namespace anonymous
 
     shader_cache::~shader_cache() { deinitialize(); }
 
@@ -75,7 +75,9 @@ namespace cots::graphics::shaders
         if (const auto it = entries_.find(key);
             it != entries_.end()
             && it->second.source_hash    == shash
-            && it->second.schema_version == k_cache_schema_version)
+            && it->second.schema_version == k_cache_schema_version
+            && it->second.depth_format   == k_engine_depth_format
+            && it->second.depth_state    == k_engine_depth_state)
         {
             spdlog::debug("[shader] cache hit: {}", identifier);
             return {
@@ -111,6 +113,8 @@ namespace cots::graphics::shaders
         slot.identifier     = identifier;
         slot.dxil           = std::move(dxil);
         slot.input_layout   = std::move(layout);
+        slot.depth_format   = k_engine_depth_format;
+        slot.depth_state    = k_engine_depth_state;
 
         if (storage_ && !storage_->store_one(slot, entries_))
         {
@@ -137,7 +141,7 @@ namespace cots::graphics::shaders
     {
         if (key == 0)
         {
-            //~ force-stale everything
+            //~ force stale everything
             for (auto& [k, e] : entries_)
                 e.source_hash = 0;
             spdlog::info("[shader] all shaders marked for recompile");

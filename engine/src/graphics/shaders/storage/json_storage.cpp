@@ -46,8 +46,10 @@ namespace cots::graphics::shaders
                 nullptr,
                 16
             );
-            e.identifier = je.value("id", "");
-            e.dxil       = helpers::b64_decode(je.value("dxil", ""));
+            e.identifier   = je.value("id", "");
+            e.dxil         = helpers::b64_decode(je.value("dxil", ""));
+            e.depth_format = je.value("depth_format", 0u);
+            e.depth_state  = je.value("depth_state",  0u);
 
             if (je.contains("layout"))
             {
@@ -95,6 +97,8 @@ namespace cots::graphics::shaders
                 { "id",             e.identifier                          },
                 { "dxil",           helpers::b64_encode(e.dxil)           },
                 { "layout",         layout                                },
+                { "depth_format",   e.depth_format                        },
+                { "depth_state",    e.depth_state                         },
             });
         }
 

@@ -10,7 +10,7 @@ namespace cots::graphics::shaders
     namespace
     {
         constexpr std::uint32_t k_magic   = 0x31435343;
-        constexpr std::uint32_t k_version = 2;
+        constexpr std::uint32_t k_version = 3;
 
         template<typename T> void wr(std::ofstream& f, const T& v)
         {
@@ -46,6 +46,10 @@ namespace cots::graphics::shaders
             wr(f, el.format);
             wr(f, el.input_slot);
         }
+
+        //~ depth pipeline info (schema v2 / file version 3)
+        wr(f, e.depth_format);
+        wr(f, e.depth_state);
         return static_cast<bool>(f);
     }
 
@@ -117,6 +121,10 @@ namespace cots::graphics::shaders
                 e.input_layout.push_back(std::move(el));
             }
             if (!ok || !f) break;
+
+            //~ depth pipeline info
+            if (!rd(f, e.depth_format) || !rd(f, e.depth_state))
+                break;
 
             out[e.key] = std::move(e);
         }
