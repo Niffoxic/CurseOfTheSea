@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 #include <wrl/client.h>
+#include <dxgiformat.h>
 
 struct ID3D12Resource2;
 
@@ -52,6 +53,14 @@ namespace cots::graphics::hardware
         const char*     debug_name   { "texture" };
     };
 
+    //~ baked dds container payload
+    struct dds_create_info
+    {
+        const void*  dds_data   { nullptr };
+        std::size_t  dds_size   { 0 };
+        const char*  debug_name { "baked" };
+    };
+
     //~ creates sampleable textures
     //~ uploads and registers srvs
     class texture_manager final
@@ -66,13 +75,19 @@ namespace cots::graphics::hardware
         [[nodiscard]] bool initialize  (device& dev, descriptor_heap& bindless);
                       void deinitialize() noexcept;
 
+        //~ live rgba path
         [[nodiscard]] texture_handle create(const texture_create_info& info);
+
+        //~ baked dds path
+        [[nodiscard]] texture_handle create_from_dds(const dds_create_info& info);
+
                       void           destroy(texture_handle h);
 
         [[nodiscard]] ID3D12Resource2* resource     (texture_handle h) const;
         [[nodiscard]] std::uint32_t    bindless_slot(texture_handle h) const;
         [[nodiscard]] std::uint32_t    width        (texture_handle h) const;
         [[nodiscard]] std::uint32_t    height       (texture_handle h) const;
+        [[nodiscard]] std::uint32_t    mip_levels   (texture_handle h) const;
 
     private:
         struct slot
@@ -81,16 +96,25 @@ namespace cots::graphics::hardware
             ID3D12Resource2*     resource      { nullptr };
             std::uint32_t        width         { 0 };
             std::uint32_t        height        { 0 };
+            std::uint32_t        mip_levels    { 1 };
             std::uint32_t        bindless_slot { 0 };
             std::uint32_t        generation    { 0 };
-            texture_format       format        { texture_format::rgba8_unorm };
+            DXGI_FORMAT          dxgi_format   { DXGI_FORMAT_UNKNOWN };
         };
 
         [[nodiscard]] std::uint32_t acquire_slot();
+
+        //~ single mip upload
         bool upload_pixels(ID3D12Resource2* dst,
                            std::uint32_t width, std::uint32_t height,
                            const void* pixels, std::uint32_t row_pitch) const;
-        void create_srv  (slot& s);
+
+        //~ mip chain upload
+        bool upload_dds   (ID3D12Resource2* dst,
+                           const void* dds_data, std::size_t dds_size,
+                           std::uint32_t mip_levels) const;
+
+        void create_srv   (slot& s);
 
     private:
         device*          device_   { nullptr };

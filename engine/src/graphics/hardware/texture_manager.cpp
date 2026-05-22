@@ -6,8 +6,11 @@
 
 #include <d3d12.h>
 #include <D3D12MemAlloc.h>
+#include <DirectXTex.h>
+#include <d3dx12/d3dx12.h>
 #include <spdlog/spdlog.h>
 #include <cstring>
+#include <vector>
 
 namespace cots::graphics::hardware
 {
@@ -84,12 +87,13 @@ namespace cots::graphics::hardware
             return texture_handle::invalid();
 
         const std::uint32_t idx = acquire_slot();
-        slot& s    = slots_[idx];
-        s.width    = info.width;
-        s.height   = info.height;
-        s.format   = info.format;
+        slot& s         = slots_[idx];
+        s.width         = info.width;
+        s.height        = info.height;
+        s.mip_levels    = 1;
+        s.dxgi_format   = to_dxgi(info.format);
 
-        const DXGI_FORMAT dxgi = to_dxgi(info.format);
+        const DXGI_FORMAT dxgi = s.dxgi_format;
 
         D3D12MA::ALLOCATION_DESC alloc_desc{};
         alloc_desc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
@@ -311,10 +315,10 @@ namespace cots::graphics::hardware
         auto* d3d = device_->d3d12_device();
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-        srv.Format                  = to_dxgi(s.format);
+        srv.Format                  = s.dxgi_format;
         srv.ViewDimension           = D3D12_SRV_DIMENSION_TEXTURE2D;
         srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srv.Texture2D.MipLevels     = 1;
+        srv.Texture2D.MipLevels     = s.mip_levels;
 
         const D3D12_CPU_DESCRIPTOR_HANDLE cpu = bindless_->cpu_handle(s.bindless_slot);
         d3d->CreateShaderResourceView(s.resource, &srv, cpu);
@@ -357,5 +361,241 @@ namespace cots::graphics::hardware
         if (!h.valid() || h.index >= slots_.size()) return 0;
         const slot& s = slots_[h.index];
         return s.generation == h.generation ? s.height : 0;
+    }
+
+    std::uint32_t texture_manager::mip_levels(const texture_handle h) const
+    {
+        if (!h.valid() || h.index >= slots_.size()) return 0;
+        const slot& s = slots_[h.index];
+        return s.generation == h.generation ? s.mip_levels : 0;
+    }
+
+    texture_handle texture_manager::create_from_dds(const dds_create_info& info)
+    {
+        if (!device_ || !device_->allocator() || !bindless_) return texture_handle::invalid();
+        if (!info.dds_data || info.dds_size == 0)            return texture_handle::invalid();
+
+        //~ parse the dds payload
+        DirectX::TexMetadata  metadata{};
+        DirectX::ScratchImage scratch{};
+        if (const HRESULT hr = DirectX::LoadFromDDSMemory(
+                info.dds_data, info.dds_size,
+                DirectX::DDS_FLAGS_NONE, &metadata, scratch);
+            FAILED(hr))
+        {
+            spdlog::error("[texture] LoadFromDDSMemory failed for '{}' hr 0x{:08X}",
+                          info.debug_name, static_cast<std::uint32_t>(hr));
+            return texture_handle::invalid();
+        }
+
+        const std::uint32_t idx = acquire_slot();
+        slot& s       = slots_[idx];
+        s.width       = static_cast<std::uint32_t>(metadata.width);
+        s.height      = static_cast<std::uint32_t>(metadata.height);
+        s.mip_levels  = static_cast<std::uint32_t>(metadata.mipLevels);
+        s.dxgi_format = metadata.format;
+
+        D3D12MA::ALLOCATION_DESC alloc_desc{};
+        alloc_desc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+
+        D3D12_RESOURCE_DESC desc{};
+        desc.Dimension          = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        desc.Alignment          = 0;
+        desc.Width              = metadata.width;
+        desc.Height             = static_cast<UINT>(metadata.height);
+        desc.DepthOrArraySize   = static_cast<UINT16>(metadata.arraySize);
+        desc.MipLevels          = static_cast<UINT16>(metadata.mipLevels);
+        desc.Format             = metadata.format;
+        desc.SampleDesc         = { 1, 0 };
+        desc.Layout             = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        desc.Flags              = D3D12_RESOURCE_FLAG_NONE;
+
+        D3D12MA::Allocation* alloc = nullptr;
+        ID3D12Resource2*     res   = nullptr;
+        if (FAILED(device_->allocator()->CreateResource(
+                &alloc_desc, &desc,
+                D3D12_RESOURCE_STATE_COMMON,
+                nullptr,
+                &alloc, IID_PPV_ARGS(&res))))
+        {
+            spdlog::error("[texture] CreateResource failed for baked '{}'", info.debug_name);
+            s = slot{};
+            return texture_handle::invalid();
+        }
+        s.allocation = alloc;
+        s.resource   = res;
+
+        wchar_t wname[64];
+        swprintf_s(wname, L"%hs", info.debug_name);
+        s.resource->SetName(wname);
+
+        //~ upload all mips
+        if (!upload_dds(s.resource, info.dds_data, info.dds_size, s.mip_levels))
+        {
+            alloc->Release();
+            s = slot{};
+            return texture_handle::invalid();
+        }
+
+        //~ grab a bindless slot
+        s.bindless_slot = bindless_->acquire();
+        if (s.bindless_slot == descriptor_heap::invalid_slot)
+        {
+            spdlog::error("[texture] bindless slot acquire failed for baked '{}'",
+                          info.debug_name);
+            alloc->Release();
+            s = slot{};
+            return texture_handle::invalid();
+        }
+        create_srv(s);
+
+        const std::uint32_t gen = next_generation_++;
+        if (next_generation_ == 0) next_generation_ = 1;
+        s.generation = gen;
+
+        spdlog::info("[texture] '{}' baked {}x{} {} mips bindless slot {}",
+                     info.debug_name, s.width, s.height, s.mip_levels, s.bindless_slot);
+        return texture_handle{ idx, gen };
+    }
+
+    //~ stage and block
+    //~ uploads the whole mip chain
+    bool texture_manager::upload_dds(ID3D12Resource2* dst,
+                                     const void* dds_data,
+                                     const std::size_t dds_size,
+                                     const std::uint32_t mip_count) const
+    {
+        auto* d3d   = device_->d3d12_device();
+        auto* queue = device_->graphics_queue();
+        auto* alloc = device_->allocator();
+
+        //~ reparse for the mips
+        DirectX::TexMetadata  metadata{};
+        DirectX::ScratchImage scratch{};
+        if (FAILED(DirectX::LoadFromDDSMemory(
+                dds_data, dds_size,
+                DirectX::DDS_FLAGS_NONE, &metadata, scratch)))
+        {
+            spdlog::error("[texture] second parse failed during upload");
+            return false;
+        }
+
+        //~ ask for the subresource layout
+        std::vector<D3D12_SUBRESOURCE_DATA> subresources;
+        if (FAILED(DirectX::PrepareUpload(
+                d3d,
+                scratch.GetImages(), scratch.GetImageCount(),
+                metadata,
+                subresources)))
+        {
+            spdlog::error("[texture] PrepareUpload failed");
+            return false;
+        }
+
+        //~ size the staging buffer
+        const UINT64 total = GetRequiredIntermediateSize(
+            dst, 0, static_cast<UINT>(subresources.size()));
+
+        //~ staging upload buffer
+        D3D12MA::ALLOCATION_DESC up_alloc{};
+        up_alloc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
+
+        D3D12_RESOURCE_DESC ub{};
+        ub.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+        ub.Width            = total;
+        ub.Height           = 1;
+        ub.DepthOrArraySize = 1;
+        ub.MipLevels        = 1;
+        ub.Format           = DXGI_FORMAT_UNKNOWN;
+        ub.SampleDesc       = { 1, 0 };
+        ub.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+        D3D12MA::Allocation* staging_alloc = nullptr;
+        Microsoft::WRL::ComPtr<ID3D12Resource> staging;
+        if (FAILED(alloc->CreateResource(&up_alloc, &ub,
+                D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                &staging_alloc, IID_PPV_ARGS(&staging))))
+        {
+            spdlog::error("[texture] staging CreateResource failed for dds");
+            return false;
+        }
+
+        //~ one shot command list
+        Microsoft::WRL::ComPtr<ID3D12CommandAllocator>     cmd_alloc;
+        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7> cmd;
+        d3d->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmd_alloc));
+        d3d->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc.Get(),
+                               nullptr, IID_PPV_ARGS(&cmd));
+
+        //~ transition into copy dest
+        constexpr D3D12_BARRIER_SUBRESOURCE_RANGE all_subresources{
+            .IndexOrFirstMipLevel = 0xffffffffu,
+            .NumMipLevels         = 0,
+            .FirstArraySlice      = 0,
+            .NumArraySlices       = 0,
+            .FirstPlane           = 0,
+            .NumPlanes            = 0,
+        };
+
+        D3D12_TEXTURE_BARRIER to_copy{};
+        to_copy.SyncBefore   = D3D12_BARRIER_SYNC_NONE;
+        to_copy.SyncAfter    = D3D12_BARRIER_SYNC_COPY;
+        to_copy.AccessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+        to_copy.AccessAfter  = D3D12_BARRIER_ACCESS_COPY_DEST;
+        to_copy.LayoutBefore = D3D12_BARRIER_LAYOUT_UNDEFINED;
+        to_copy.LayoutAfter  = D3D12_BARRIER_LAYOUT_COPY_DEST;
+        to_copy.pResource    = dst;
+        to_copy.Subresources = all_subresources;
+        to_copy.Flags        = D3D12_TEXTURE_BARRIER_FLAG_DISCARD;
+
+        D3D12_BARRIER_GROUP g0{
+            .Type             = D3D12_BARRIER_TYPE_TEXTURE,
+            .NumBarriers      = 1,
+            .pTextureBarriers = &to_copy,
+        };
+        cmd->Barrier(1, &g0);
+
+        //~ helper does the per mip copy
+        UpdateSubresources(
+            cmd.Get(),
+            dst,
+            staging.Get(),
+            0,
+            0,
+            static_cast<UINT>(subresources.size()),
+            subresources.data());
+
+        //~ leave it in common
+        D3D12_TEXTURE_BARRIER to_common{};
+        to_common.SyncBefore   = D3D12_BARRIER_SYNC_COPY;
+        to_common.SyncAfter    = D3D12_BARRIER_SYNC_NONE;
+        to_common.AccessBefore = D3D12_BARRIER_ACCESS_COPY_DEST;
+        to_common.AccessAfter  = D3D12_BARRIER_ACCESS_NO_ACCESS;
+        to_common.LayoutBefore = D3D12_BARRIER_LAYOUT_COPY_DEST;
+        to_common.LayoutAfter  = D3D12_BARRIER_LAYOUT_COMMON;
+        to_common.pResource    = dst;
+        to_common.Subresources = all_subresources;
+        to_common.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+
+        D3D12_BARRIER_GROUP g1{
+            .Type             = D3D12_BARRIER_TYPE_TEXTURE,
+            .NumBarriers      = 1,
+            .pTextureBarriers = &to_common,
+        };
+        cmd->Barrier(1, &g1);
+
+        cmd->Close();
+        ID3D12CommandList* lists[] = { cmd.Get() };
+        queue->ExecuteCommandLists(1, lists);
+
+        fence flush_fence;
+        if (!flush_fence.initialize(*device_)) { staging_alloc->Release(); return false; }
+        const std::uint64_t target = flush_fence.signal(queue);
+        flush_fence.wait(target);
+        flush_fence.deinitialize();
+
+        staging_alloc->Release();
+        (void)mip_count;
+        return true;
     }
 } // namespace cots::graphics::hardware
