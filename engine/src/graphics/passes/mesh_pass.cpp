@@ -38,8 +38,8 @@ namespace cots::graphics::passes
     void mesh_pass::declare(graph::declare_context& dc)
     {
         //~ color and depth are both written and depth is sampled for compare
-        dc.write(backbuffer_);
-        dc.write(depth_);
+        dc.write(backbuffer_, graph::resource_usage::render_target);
+        dc.write(depth_,      graph::resource_usage::depth_write);
     }
 
     bool mesh_pass::setup(const setup_context& sc)

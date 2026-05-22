@@ -8,7 +8,6 @@
 
 struct ID3D12CommandAllocator;
 struct ID3D12GraphicsCommandList7;
-struct ID3D12Resource2;
 
 namespace cots::graphics::hardware
 {
@@ -36,11 +35,6 @@ namespace cots::graphics::hardware
         // close the list before executing
         // no more recording after this
         [[nodiscard]] bool close();
-
-        // transition a resource between states TODO: Automatic transition
-        void transition(ID3D12Resource2* resource,
-                        resource_state from,
-                        resource_state to) const;
 
         void clear_render_target(std::size_t rtv_handle, const float color[4])              const;
         void clear_depth_stencil(std::size_t dsv_handle, float depth, std::uint8_t stencil) const;

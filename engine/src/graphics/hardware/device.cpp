@@ -245,6 +245,23 @@ bool cots::graphics::hardware::device::create_internal(
 
     device_->SetName(L"COTS Device");
 
+    //~ requires enhanced barriers
+    {
+        D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12{};
+        const HRESULT hr = device_->CheckFeatureSupport(
+            D3D12_FEATURE_D3D12_OPTIONS12, &options12, sizeof(options12));
+
+        if (FAILED(hr) || !options12.EnhancedBarriersSupported)
+        {
+            spdlog::error(
+                "[hardware:device] enhanced barriers required but unsupported "
+                "on this adapter (hr=0x{:08X}) update the GPU driver or buy a new one",
+                static_cast<std::uint32_t>(hr));
+            return false;
+        }
+        spdlog::info("[hardware:device] enhanced barriers supported");
+    }
+
     DXGI_ADAPTER_DESC3 desc{};
     adapter_->GetDesc3(&desc);
 

@@ -6,7 +6,11 @@
 #include <memory>
 #include <vector>
 
+#include "engine/graphics/graph/barrier_map.h"
+#include "engine/graphics/graph/declare_context.h"
 #include "engine/graphics/graph/resource_registry.h"
+
+struct ID3D12Resource2;
 
 namespace cots::graphics
 {
@@ -48,7 +52,7 @@ namespace cots::graphics::graph
 
         [[nodiscard]] bool compile(const setup_context& sc);
 
-        //~ refresh imports then execute on every pass in order finally!
+        //~ refresh imports derive and emit barriers per pass
         void execute(const execute_context& ec);
 
         resource_registry&       resources() noexcept       { return resources_; }
@@ -60,14 +64,30 @@ namespace cots::graphics::graph
         struct pass_node
         {
             std::unique_ptr<pass>        p;
-            std::vector<resource_handle> reads;
-            std::vector<resource_handle> writes;
+            std::vector<resource_access> reads;
+            std::vector<resource_access> writes;
         };
 
+        struct tracked_resource
+        {
+            barrier_state    current     { D3D12_BARRIER_SYNC_NONE,
+                                           D3D12_BARRIER_ACCESS_NO_ACCESS,
+                                           D3D12_BARRIER_LAYOUT_COMMON };
+            ID3D12Resource2* last_seen   { nullptr };
+            bool             initialized { false };
+        };
+
+        //~ internals
         [[nodiscard]] bool validate() const;
 
-        std::vector<pass_node> passes_;
-        resource_registry      resources_;
+        void sync_resource_states  ();
+        void emit_barriers_for_pass(const pass_node& node,
+                                    hardware::command_context& ctx);
+
+        private:
+        std::vector<pass_node>        passes_;
+        std::vector<tracked_resource> states_;
+        resource_registry             resources_;
     };
 } // namespace cots::graphics::graph
 

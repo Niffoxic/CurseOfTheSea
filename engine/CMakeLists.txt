@@ -36,6 +36,7 @@ add_executable(engine
         src/graphics/resource/depth_target.cpp
         src/graphics/graph/resource_registry.cpp
         src/graphics/graph/render_graph.cpp
+        src/graphics/graph/barrier_map.cpp
 )
 
 cots_apply_compile_flags(engine)

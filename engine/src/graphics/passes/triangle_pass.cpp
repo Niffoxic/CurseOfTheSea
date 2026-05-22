@@ -62,7 +62,7 @@ namespace cots::graphics::passes
 
     void triangle_pass::declare(graph::declare_context& dc)
     {
-        dc.write(backbuffer_);
+        dc.write(backbuffer_, graph::resource_usage::render_target);
     }
 
     bool triangle_pass::setup(const setup_context& sc)

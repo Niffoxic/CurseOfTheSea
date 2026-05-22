@@ -10,8 +10,7 @@ namespace cots::graphics::passes
     class present_pass final : public pass
     {
     public:
-        present_pass(graph::resource_handle backbuffer,
-                     graph::resource_handle depth) noexcept;
+        explicit present_pass(graph::resource_handle backbuffer) noexcept;
 
         void declare(graph::declare_context& dc) override;
         void execute(const pass_context& pc)     override;
@@ -23,7 +22,6 @@ namespace cots::graphics::passes
 
     private:
         graph::resource_handle backbuffer_;
-        graph::resource_handle depth_;
     };
 } // namespace cots::graphics::passes
 

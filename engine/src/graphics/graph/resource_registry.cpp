@@ -10,17 +10,19 @@ namespace cots::graphics::graph
     } // namespace anonymous
 
     resource_handle resource_registry::import(const char* debug_name,
+                                              const resource_usage initial_usage,
                                               resource_provider provider)
     {
         COTS_ASSERT(provider && "resource_registry::import requires a provider");
 
-        const std::uint32_t index = static_cast<std::uint32_t>(entries_.size());
+        const auto index = static_cast<std::uint32_t>(entries_.size());
         const std::uint32_t gen   = next_generation_++;
 
         entry e{};
-        e.debug_name = debug_name ? debug_name : "<unnamed>";
-        e.provider   = std::move(provider);
-        e.generation = gen;
+        e.debug_name    = debug_name ? debug_name : "<unnamed>";
+        e.provider      = std::move(provider);
+        e.initial_usage = initial_usage;
+        e.generation    = gen;
         entries_.push_back(std::move(e));
 
         const resource_handle h{ index, gen };
@@ -55,6 +57,12 @@ namespace cots::graphics::graph
         if (!exists(h))
             return "<invalid>";
         return entries_[h.index].debug_name.c_str();
+    }
+
+    resource_usage resource_registry::initial_usage(const resource_handle h) const
+    {
+        if (!exists(h)) return resource_usage::common;
+        return entries_[h.index].initial_usage;
     }
 
     bool resource_registry::exists(const resource_handle h) const noexcept

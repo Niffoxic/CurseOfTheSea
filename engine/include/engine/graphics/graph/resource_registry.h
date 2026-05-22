@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "engine/graphics/graph/resource_handle.h"
+#include "engine/graphics/graph/resource_usage.h"
 
 struct ID3D12Resource2;
 
@@ -37,18 +38,21 @@ namespace cots::graphics::graph
         resource_registry& operator=(resource_registry&&)      = delete;
 
         //~ register an externally owned resource returns a stable handle
-        resource_handle import(const char* debug_name, resource_provider provider);
+        resource_handle import(const char*       debug_name,
+                               resource_usage    initial_usage,
+                               resource_provider provider);
 
         //~ reevaluate all providers and cache the views for this frame
         void refresh();
         void clear  ();
 
-        [[nodiscard]] const resource_view& view      (resource_handle h) const;
-        [[nodiscard]] const char*          debug_name(resource_handle h) const;
-        [[nodiscard]] bool                 exists    (resource_handle h) const noexcept;
-        [[nodiscard]] std::uint32_t        size      () const noexcept;
+        [[nodiscard]] const resource_view& view         (resource_handle h) const;
+        [[nodiscard]] const char*          debug_name   (resource_handle h) const;
+        [[nodiscard]] resource_usage       initial_usage(resource_handle h) const;
+        [[nodiscard]] bool                 exists       (resource_handle h) const noexcept;
+        [[nodiscard]] std::uint32_t        size         ()                  const noexcept;
 
-        //~ enumerate every live import
+        //~ enumerate every live import and state tracker setup
         [[nodiscard]] const std::vector<resource_handle>& imports() const noexcept;
 
     private:
@@ -57,7 +61,8 @@ namespace cots::graphics::graph
             std::string       debug_name;
             resource_provider provider;
             resource_view     cached;
-            std::uint32_t     generation{ 0 }; //~ 0 means free slot
+            std::uint32_t     generation    { 0 }; //~ 0 means free slot
+            resource_usage    initial_usage { resource_usage::common };
         };
 
         std::vector<entry>             entries_;

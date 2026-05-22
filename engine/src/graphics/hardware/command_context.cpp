@@ -102,23 +102,6 @@ namespace cots::graphics::hardware
         return true;
     }
 
-    void command_context::transition(ID3D12Resource2* resource,
-                                     const resource_state from,
-                                     const resource_state to) const
-    {
-        if (!resource || !is_open_) return;
-
-        D3D12_RESOURCE_BARRIER barrier{};
-        barrier.Type  = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        barrier.Transition.pResource   = resource;
-        barrier.Transition.StateBefore = helpers::to_d3d12(from);
-        barrier.Transition.StateAfter  = helpers::to_d3d12(to);
-        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-        list_->ResourceBarrier(1, &barrier);
-    }
-
     void command_context::clear_render_target(
         const std::size_t rtv_handle,
         const float color[4]

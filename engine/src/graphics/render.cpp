@@ -443,6 +443,7 @@ bool cots::graphics::render::build_passes()
     // at the right d3d resource and rtv
     const auto h_backbuffer = graph_.resources().import(
         "backbuffer",
+        graph::resource_usage::present,
         [this]() -> graph::resource_view
         {
             return graph::resource_view
@@ -456,6 +457,7 @@ bool cots::graphics::render::build_passes()
 
     const auto h_depth = graph_.resources().import(
         "depth",
+        graph::resource_usage::common,
         [this]() -> graph::resource_view
         {
             return graph::resource_view
@@ -470,7 +472,7 @@ bool cots::graphics::render::build_passes()
     //~ insertion order TODO: add automatic topological sort
     graph_.add_pass(std::make_unique<passes::clear_pass>  (h_backbuffer, h_depth));
     graph_.add_pass(std::make_unique<passes::mesh_pass>   (h_backbuffer, h_depth));
-    graph_.add_pass(std::make_unique<passes::present_pass>(h_backbuffer, h_depth));
+    graph_.add_pass(std::make_unique<passes::present_pass>(h_backbuffer));
 
     const setup_context sc
     {

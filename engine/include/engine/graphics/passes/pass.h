@@ -60,8 +60,7 @@ namespace cots::graphics
             return true;
         }
 
-        //~ advertise resource reads or writes to the graph
-        // TODO: they don't drive barriers yet
+        //~ advertise resource reads or writes and their usage kinds to graph
         virtual void declare(graph::declare_context& dc) { (void)dc; }
 
         //~ per-frame recording
