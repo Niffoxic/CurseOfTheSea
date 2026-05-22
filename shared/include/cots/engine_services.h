@@ -155,6 +155,7 @@ namespace cots::module
     {
         mesh_id_quad = 0,
         mesh_id_cube = 1,
+        mesh_id_ship = 2,
     };
 
     struct render_services

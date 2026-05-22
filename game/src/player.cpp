@@ -87,6 +87,13 @@ namespace game
                     XMMatrixTranslation(static_cast<float>(i) * 2.5f, -1.5f, 2.0f));
                 r.submit_instance(cots::module::mesh_id_quad, &world.m[0][0], 0);
             }
+
+            //~ ship from gltf next to the player
+            XMFLOAT4X4 ship_world;
+            XMStoreFloat4x4(&ship_world,
+                XMMatrixRotationY(angle * 0.5f) *
+                XMMatrixTranslation(3.0f, 0.0f, 0.0f));
+            r.submit_instance(cots::module::mesh_id_ship, &ship_world.m[0][0], 0);
         }
 
         // push listener so audio tracks the player

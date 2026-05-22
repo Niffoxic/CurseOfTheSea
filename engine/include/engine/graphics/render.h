@@ -34,6 +34,7 @@
 #include "graph/render_graph.h"
 #include "render_snapshot.h"
 #include "meshes/mesh_registry.h"
+#include "engine/graphics/meshes/mesh_cache.h"
 
 namespace cots::graphics
 {
@@ -220,6 +221,7 @@ namespace cots::graphics
         shaders::shader_cache     shader_cache_  {};
         hardware::buffer_manager  buffers_       {};
         meshes::mesh_registry     mesh_registry_ {};
+        meshes::mesh_cache        mesh_cache_    {};
         hardware::descriptor_heap bindless_heap_ {};
         hardware::texture_manager textures_      {};
         textures::texture_cache   texture_cache_ {};

@@ -37,6 +37,10 @@
 #include "engine/graphics/textures/texture_intent.h"
 #include <cots/cots_config.h>
 
+#include "engine/graphics/meshes/mesh_cache.h"
+#include "engine/graphics/meshes/gltf_importer.h"
+#include "engine/graphics/meshes/imported_model.h"
+
 cots::graphics::render::~render() = default;
 
 bool cots::graphics::render::initialize()
@@ -134,6 +138,7 @@ void cots::graphics::render::render_thread_main()
     graph_         .clear();
     shader_cache_  .deinitialize();
     texture_cache_ .deinitialize();
+    mesh_cache_    .deinitialize();
     mesh_registry_ .deinitialize();
     textures_      .deinitialize();
     bindless_heap_ .deinitialize();
@@ -303,6 +308,70 @@ bool cots::graphics::render::initialize_render_thread()
 
         const auto id = mesh_registry_.create(cd);
         spdlog::info("[render] registered cube as mesh {}", id);
+    }
+
+     //~ test
+    {
+        if (not mesh_cache_.initialize(std::make_unique<meshes::gltf_importer>()))
+        {
+            spdlog::error("mesh cache init failed");
+            return false;
+        }
+
+        constexpr const char* model_path = "assets/models/test.glb";
+        meshes::imported_model im{};
+        if (mesh_cache_.get_or_bake(model_path, im) && im.valid())
+        {
+            const auto id = mesh_registry_.create_from_imported(im, "ship");
+            if (id == meshes::invalid_mesh)
+                spdlog::error("[render] ship registration failed");
+            else
+                spdlog::info("[render] registered ship from '{}' as mesh {}",
+                             model_path, id);
+        }
+        else
+        {
+            //~ cube fallback for the ship slot
+            spdlog::warn("[render] '{}' missing using cube as ship fallback",
+                         model_path);
+            static constexpr float positions[] =
+            {
+                -0.5f, -0.5f, -0.5f,   0.5f, -0.5f, -0.5f,
+                 0.5f,  0.5f, -0.5f,  -0.5f,  0.5f, -0.5f,
+                -0.5f, -0.5f,  0.5f,   0.5f, -0.5f,  0.5f,
+                 0.5f,  0.5f,  0.5f,  -0.5f,  0.5f,  0.5f,
+            };
+            static constexpr float colors[] =
+            {
+                1,1,1, 1,1,1, 1,1,1, 1,1,1,
+                1,1,1, 1,1,1, 1,1,1, 1,1,1,
+            };
+            static constexpr float texcoords[] =
+            {
+                0,0, 1,0, 1,1, 0,1,
+                0,0, 1,0, 1,1, 0,1,
+            };
+            static constexpr std::uint16_t indices[] =
+            {
+                0,1,2, 0,2,3,    4,6,5, 4,7,6,
+                0,3,7, 0,7,4,    1,5,6, 1,6,2,
+                0,4,5, 0,5,1,    3,2,6, 3,6,7,
+            };
+            meshes::mesh_desc sd{};
+            sd.streams = {
+                { "POSITION", positions, sizeof(positions), sizeof(float) * 3 },
+                { "COLOR",    colors,    sizeof(colors),    sizeof(float) * 3 },
+                { "TEXCOORD", texcoords, sizeof(texcoords), sizeof(float) * 2 },
+            };
+            sd.vertex_count = 8;
+            sd.index_data   = indices;
+            sd.index_bytes  = sizeof(indices);
+            sd.index_count  = 36;
+            sd.index_16bit  = true;
+            sd.debug_name   = "ship_fallback";
+            const auto id = mesh_registry_.create(sd);
+            spdlog::info("[render] registered ship fallback as mesh {}", id);
+        }
     }
 
     //~ initialize fence
