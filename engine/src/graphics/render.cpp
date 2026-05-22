@@ -32,6 +32,7 @@
 //~ test
 #include "engine/graphics/shaders/storage/binary_storage.h"
 #include "engine/graphics/shaders/storage/json_storage.h"
+#include "engine/graphics/utils/image_decode.h"
 #include <cots/cots_config.h>
 
 cots::graphics::render::~render() = default;
@@ -125,6 +126,8 @@ void cots::graphics::render::render_thread_main()
     graph_        .clear();
     shader_cache_ .deinitialize();
     mesh_registry_.deinitialize();
+    textures_     .deinitialize();
+    bindless_heap_.deinitialize();
     buffers_      .deinitialize();
     depth_target_ .deinitialize();
     fence_        .deinitialize();
@@ -149,6 +152,21 @@ bool cots::graphics::render::initialize_render_thread()
         spdlog::error("buffer manager init failed");
         return false;
     }
+
+    //~ bindless heap capacity
+    constexpr std::uint32_t bindless_capacity = 4096u;
+    if (not bindless_heap_.initialize(device_, bindless_capacity))
+    {
+        spdlog::error("bindless heap init failed");
+        return false;
+    }
+
+    if (not textures_.initialize(device_, bindless_heap_))
+    {
+        spdlog::error("texture manager init failed");
+        return false;
+    }
+
     if (not mesh_registry_.initialize(buffers_))
     {
         spdlog::error("mesh registry init failed");
@@ -166,6 +184,11 @@ bool cots::graphics::render::initialize_render_thread()
         {
             1,0,0,  0,1,0,  0,0,1,  1,1,1,
         };
+        static constexpr float texcoords[] =
+        {
+            0.0f, 1.0f,   1.0f, 1.0f,
+            1.0f, 0.0f,   0.0f, 0.0f,
+        };
         static constexpr std::uint16_t indices[] = { 0,1,2, 0,2,3 };
 
         meshes::mesh_desc qd{};
@@ -173,6 +196,7 @@ bool cots::graphics::render::initialize_render_thread()
         {
             { "POSITION", positions, sizeof(positions), sizeof(float) * 3 },
             { "COLOR",    colors,    sizeof(colors),    sizeof(float) * 3 },
+            { "TEXCOORD", texcoords, sizeof(texcoords), sizeof(float) * 2 },
         };
         qd.vertex_count = 4;
         qd.index_data   = indices;
@@ -187,34 +211,55 @@ bool cots::graphics::render::initialize_render_thread()
 
     //~ testing unit cube
     {
+        //~ four vertices per face
         static constexpr float positions[] =
         {
-            //~ back face z = -0.5
+            //~ positive x face right
+             0.5f, -0.5f, -0.5f,   0.5f, -0.5f,  0.5f,
+             0.5f,  0.5f,  0.5f,   0.5f,  0.5f, -0.5f,
+            //~ negative x face left
+            -0.5f, -0.5f,  0.5f,  -0.5f, -0.5f, -0.5f,
+            -0.5f,  0.5f, -0.5f,  -0.5f,  0.5f,  0.5f,
+            //~ positive y face top
+            -0.5f,  0.5f, -0.5f,   0.5f,  0.5f, -0.5f,
+             0.5f,  0.5f,  0.5f,  -0.5f,  0.5f,  0.5f,
+            //~ negative y face bottom
+            -0.5f, -0.5f,  0.5f,   0.5f, -0.5f,  0.5f,
+             0.5f, -0.5f, -0.5f,  -0.5f, -0.5f, -0.5f,
+            //~ positive z face front
+             0.5f, -0.5f,  0.5f,  -0.5f, -0.5f,  0.5f,
+            -0.5f,  0.5f,  0.5f,   0.5f,  0.5f,  0.5f,
+            //~ negative z face back
             -0.5f, -0.5f, -0.5f,   0.5f, -0.5f, -0.5f,
              0.5f,  0.5f, -0.5f,  -0.5f,  0.5f, -0.5f,
-            //~ front face z = +0.5
-            -0.5f, -0.5f,  0.5f,   0.5f, -0.5f,  0.5f,
-             0.5f,  0.5f,  0.5f,  -0.5f,  0.5f,  0.5f,
         };
         static constexpr float colors[] =
         {
-            1,0,0,  0,1,0,  0,0,1,  1,1,0,
-            1,0,1,  0,1,1,  1,1,1,  0.5f,0.5f,0.5f,
+            1,0,0, 1,0,0, 1,0,0, 1,0,0,
+            0,1,0, 0,1,0, 0,1,0, 0,1,0,
+            0,0,1, 0,0,1, 0,0,1, 0,0,1,
+            1,1,0, 1,1,0, 1,1,0, 1,1,0,
+            1,0,1, 1,0,1, 1,0,1, 1,0,1,
+            0,1,1, 0,1,1, 0,1,1, 0,1,1,
+        };
+        static constexpr float texcoords[] =
+        {
+            0,1, 1,1, 1,0, 0,0, //~ right
+            0,1, 1,1, 1,0, 0,0, //~ left
+            0,1, 1,1, 1,0, 0,0, //~ top
+            0,1, 1,1, 1,0, 0,0, //~ bottom
+            0,1, 1,1, 1,0, 0,0, //~ front
+            0,1, 1,1, 1,0, 0,0, //~ back
         };
         static constexpr std::uint16_t indices[] =
         {
-            //~ back
-            0,1,2,   0,2,3,
-            //~ front
-            4,6,5,   4,7,6,
-            //~ left
-            0,3,7,   0,7,4,
-            //~ right
-            1,5,6,   1,6,2,
-            //~ bottom
-            0,4,5,   0,5,1,
-            //~ top
-            3,2,6,   3,6,7,
+            //~ culling is none
+             0, 1, 2,    0, 2, 3,
+             4, 5, 6,    4, 6, 7,
+             8, 9,10,    8,10,11,
+            12,13,14,   12,14,15,
+            16,17,18,   16,18,19,
+            20,21,22,   20,22,23,
         };
 
         meshes::mesh_desc cd{};
@@ -222,8 +267,9 @@ bool cots::graphics::render::initialize_render_thread()
         {
             { "POSITION", positions, sizeof(positions), sizeof(float) * 3 },
             { "COLOR",    colors,    sizeof(colors),    sizeof(float) * 3 },
+            { "TEXCOORD", texcoords, sizeof(texcoords), sizeof(float) * 2 },
         };
-        cd.vertex_count = 8;
+        cd.vertex_count = 24;
         cd.index_data   = indices;
         cd.index_bytes  = sizeof(indices);
         cd.index_count  = 36;
@@ -304,6 +350,39 @@ bool cots::graphics::render::initialize_render_thread()
         spdlog::info("[shader-test] vs={} bytes, ps={} bytes", vs.size, ps.size);
     }
 
+    //~ test texture live decode
+    {
+        utils::decoded_image img{};
+        constexpr const char* path = "assets/textures/checker.png";
+        if (!utils::decode_image_file(path, img) || !img.valid())
+        {
+            spdlog::warn("[render] '{}' missing falling back to procedural checker", path);
+            //~ red white checker
+            utils::make_checkerboard(
+                256u, 256u, 32u,
+                0xFFFFFFFFu,  //~ white
+                0xFF2030E0u,  //~ pirate red
+                img);
+        }
+
+        hardware::texture_create_info ti{};
+        ti.width      = img.width;
+        ti.height     = img.height;
+        ti.format     = hardware::texture_format::rgba8_unorm_srgb;
+        ti.pixels     = img.pixels.data();
+        ti.row_pitch  = img.row_pitch();
+        ti.debug_name = "checker";
+
+        test_texture_ = textures_.create(ti);
+        if (!test_texture_.valid())
+        {
+            spdlog::error("[render] test texture creation failed");
+            return false;
+        }
+        spdlog::info("[render] test texture in bindless slot {}",
+                     textures_.bindless_slot(test_texture_));
+    }
+
     if (not build_passes()) return false;
 
     render_ready_.store(true, std::memory_order_release);
@@ -374,6 +453,9 @@ void cots::graphics::render::record_frame(
 
     auto& ctx = frame_.contexts[frame];
     if (!ctx.reset()) return;
+
+    //~ bind the bindless heap
+    ctx.set_descriptor_heap(bindless_heap_.heap());
 
     const graph::execute_context ec
     {
@@ -486,17 +568,38 @@ bool cots::graphics::render::build_passes()
             };
         });
 
+    //~ uploaded in common
+    //~ graph transitions on first use
+    const auto h_test_texture = graph_.resources().import(
+        "test_texture",
+        graph::resource_usage::common,
+        [this]() -> graph::resource_view
+        {
+            return graph::resource_view
+            {
+                .resource    = textures_.resource(test_texture_),
+                .view_handle = 0,
+                .width       = textures_.width(test_texture_),
+                .height      = textures_.height(test_texture_),
+            };
+        },
+        true /* preserve_contents */);
+
+    const std::uint32_t test_index = textures_.bindless_slot(test_texture_);
+
     //~ insertion order TODO: add automatic topological sort
     graph_.add_pass(std::make_unique<passes::clear_pass>  (h_backbuffer, h_depth));
-    graph_.add_pass(std::make_unique<passes::mesh_pass>   (h_backbuffer, h_depth));
+    graph_.add_pass(std::make_unique<passes::mesh_pass>   (h_backbuffer, h_depth, h_test_texture, test_index));
     graph_.add_pass(std::make_unique<passes::present_pass>(h_backbuffer));
 
     const setup_context sc
     {
-        .device  = device_,
-        .shaders = shader_cache_,
-        .buffers = buffers_,
-        .meshes  = mesh_registry_
+        .device   = device_,
+        .shaders  = shader_cache_,
+        .buffers  = buffers_,
+        .meshes   = mesh_registry_,
+        .textures = textures_,
+        .bindless = bindless_heap_,
     };
 
     if (not graph_.compile(sc))

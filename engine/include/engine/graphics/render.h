@@ -19,6 +19,8 @@
 #include "engine/graphics/hardware/command_context.h"
 #include "engine/graphics/shaders/shader_cache.h"
 #include "engine/graphics/hardware/buffer_manager.h"
+#include "engine/graphics/hardware/descriptor_heap.h"
+#include "engine/graphics/hardware/texture_manager.h"
 #include "resource/depth_target.h"
 
 #include "engine/events/windows_event.h"
@@ -203,9 +205,14 @@ namespace cots::graphics
         std::atomic<float> stat_frame_ms_{ 0.f };
 
         //~ core
-        shaders::shader_cache    shader_cache_{};
-        hardware::buffer_manager buffers_     {};
-        meshes::mesh_registry   mesh_registry_{};
+        shaders::shader_cache     shader_cache_  {};
+        hardware::buffer_manager  buffers_       {};
+        meshes::mesh_registry     mesh_registry_ {};
+        hardware::descriptor_heap bindless_heap_ {};
+        hardware::texture_manager textures_      {};
+
+        //~ test resources kept alive for the lifetime of the renderer
+        hardware::texture_handle  test_texture_  {};
     };
 }
 

@@ -262,6 +262,37 @@ bool cots::graphics::hardware::device::create_internal(
         spdlog::info("[hardware:device] enhanced barriers supported");
     }
 
+    //~ requires sm six six bindless
+    {
+        D3D12_FEATURE_DATA_SHADER_MODEL sm{ D3D_SHADER_MODEL_6_6 };
+        const HRESULT hr_sm = device_->CheckFeatureSupport(
+            D3D12_FEATURE_SHADER_MODEL, &sm, sizeof(sm));
+
+        if (FAILED(hr_sm) || sm.HighestShaderModel < D3D_SHADER_MODEL_6_6)
+        {
+            spdlog::error(
+                "[hardware:device] shader model six six required but only "
+                "0x{:X} reported update the GPU driver or buy a new one",
+                static_cast<std::uint32_t>(sm.HighestShaderModel));
+            return false;
+        }
+
+        D3D12_FEATURE_DATA_D3D12_OPTIONS options{};
+        const HRESULT hr_o = device_->CheckFeatureSupport(
+            D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof(options));
+
+        if (FAILED(hr_o) ||
+            options.ResourceBindingTier < D3D12_RESOURCE_BINDING_TIER_3)
+        {
+            spdlog::error(
+                "[hardware:device] resource binding tier three required for "
+                "bindless dynamic resources tier reported is {}",
+                static_cast<int>(options.ResourceBindingTier));
+            return false;
+        }
+        spdlog::info("[hardware:device] sm six six and bindless supported");
+    }
+
     DXGI_ADAPTER_DESC3 desc{};
     adapter_->GetDesc3(&desc);
 
