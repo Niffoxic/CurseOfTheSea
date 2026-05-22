@@ -41,6 +41,16 @@ function(cots_add_general_dependencies target)
     FetchContent_MakeAvailable(d3d12ma)
     target_link_libraries(${target} PRIVATE D3D12MemoryAllocator)
 
+    # stb single header png decode
+    FetchContent_Declare(
+            stb
+            GIT_REPOSITORY https://github.com/nothings/stb.git
+            GIT_TAG f0569113c93ad095470c54bf34a17b36646bbbb5
+            GIT_SHALLOW FALSE
+    )
+    FetchContent_MakeAvailable(stb)
+    target_include_directories(${target} PRIVATE ${stb_SOURCE_DIR})
+
     # Tracy
     if(COTS_USE_TRACY)
         FetchContent_Declare(
