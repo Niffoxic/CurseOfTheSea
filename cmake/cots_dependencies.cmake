@@ -72,6 +72,27 @@ function(cots_add_general_dependencies target)
         message(FATAL_ERROR "DirectXTex was fetched but no known DirectXTex CMake target was found!")
     endif()
 
+    # fastgltf glTF parser
+    set(FASTGLTF_COMPILE_AS_CPP20 ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+            fastgltf
+            GIT_REPOSITORY https://github.com/spnda/fastgltf.git
+            GIT_TAG v0.8.0
+            GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(fastgltf)
+    target_link_libraries(${target} PRIVATE fastgltf::fastgltf)
+
+    # meshoptimizer
+    FetchContent_Declare(
+            meshoptimizer
+            GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git
+            GIT_TAG v0.21
+            GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(meshoptimizer)
+    target_link_libraries(${target} PRIVATE meshoptimizer)
+
     # Tracy
     if(COTS_USE_TRACY)
         FetchContent_Declare(

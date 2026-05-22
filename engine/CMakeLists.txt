@@ -42,6 +42,9 @@ add_executable(engine
         src/graphics/textures/texture_baker.cpp
         src/graphics/textures/texture_cache.cpp
         src/graphics/shaders/root_sig_builder.cpp
+        src/graphics/meshes/gltf_importer.cpp
+        src/graphics/meshes/mesh_baker.cpp
+        src/graphics/meshes/mesh_cache.cpp
 )
 
 cots_apply_compile_flags(engine)
