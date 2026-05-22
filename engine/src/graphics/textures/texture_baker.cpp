@@ -4,6 +4,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <chrono>
 #include <Windows.h>
 #include <wrl/client.h>
 #include <DirectXTex.h>
@@ -37,10 +38,11 @@ namespace cots::graphics::textures
         //~ compress flags for the intent
         DirectX::TEX_COMPRESS_FLAGS compress_flags_for(const texture_intent intent) noexcept
         {
-            //~ srgb aware compress for albedo
-            return intent == texture_intent::albedo
-                ? DirectX::TEX_COMPRESS_SRGB
-                : DirectX::TEX_COMPRESS_DEFAULT;
+            auto flags = DirectX::TEX_COMPRESS_PARALLEL;
+            if (intent == texture_intent::albedo)
+                flags = flags | DirectX::TEX_COMPRESS_BC7_QUICK
+              | DirectX::TEX_COMPRESS_SRGB;
+            return flags;
         }
     } //~ anonymous namespace
 
@@ -58,6 +60,8 @@ namespace cots::graphics::textures
                              std::vector<std::uint8_t>& out_dds)
     {
         out_dds.clear();
+        using clock = std::chrono::steady_clock;
+        const auto t_start = clock::now();
 
         //~ decode the source via stb
         utils::decoded_image src{};
@@ -80,6 +84,10 @@ namespace cots::graphics::textures
         base.pixels     = src.pixels.data();
 
         //~ generate the mip chain
+        spdlog::info("[texture-baker] generating mips for '{}' {}x{}",
+             source_path, src.width, src.height);
+        const auto t_mip_start = clock::now();
+
         DirectX::ScratchImage mip_chain{};
         if (const HRESULT hr = DirectX::GenerateMipMaps(
                 base,
@@ -92,8 +100,16 @@ namespace cots::graphics::textures
                           source_path, static_cast<std::uint32_t>(hr));
             return false;
         }
+        const auto mip_ms = std::chrono::duration<double, std::milli>(
+            clock::now() - t_mip_start).count();
+        spdlog::info("[texture-baker] mips done in {:.1f} ms ({} levels)",
+                     mip_ms, mip_chain.GetMetadata().mipLevels);
 
         //~ compress to bc
+        spdlog::info("[texture-baker] compressing to {} multithreaded this can take a moment",
+             to_string(intent));
+        const auto t_cmp_start = clock::now();
+
         DirectX::ScratchImage compressed{};
         if (const HRESULT hr = DirectX::Compress(
                 mip_chain.GetImages(),
@@ -109,6 +125,9 @@ namespace cots::graphics::textures
                           source_path, static_cast<std::uint32_t>(hr));
             return false;
         }
+        const auto cmp_ms = std::chrono::duration<double, std::milli>(
+            clock::now() - t_cmp_start).count();
+        spdlog::info("[texture-baker] compress done in {:.1f} ms", cmp_ms);
 
         //~ serialize to a dds blob
         DirectX::Blob blob{};
@@ -128,10 +147,13 @@ namespace cots::graphics::textures
         const auto* bytes = static_cast<const std::uint8_t*>(blob.GetBufferPointer());
         out_dds.assign(bytes, bytes + blob.GetBufferSize());
 
-        spdlog::info("[texture-baker] '{}' baked {}x{} {} mips {} bytes intent {}",
-                     source_path, src.width, src.height,
-                     compressed.GetMetadata().mipLevels,
-                     out_dds.size(), to_string(intent));
+        const auto total_ms = std::chrono::duration<double, std::milli>(
+           clock::now() - t_start).count();
+
+        spdlog::info("[texture-baker] '{}' baked {}x{} {} mips {} bytes intent {} in {:.1f} ms",
+                            source_path, src.width, src.height,
+                            compressed.GetMetadata().mipLevels,
+                            out_dds.size(), to_string(intent), total_ms);
         return true;
     }
 } // namespace cots::graphics::textures

@@ -52,7 +52,13 @@ void cots::graphics::render::deinitialize() noexcept
     if (!running_.exchange(false)) return;
 
     if (render_thread_.joinable())
+    {
+        if (!render_ready_.load(std::memory_order_acquire))
+        {
+            spdlog::info("[render] waiting for render thread to finish init (texture bake may be in progress)");
+        }
         render_thread_.join();
+    }
 
     unsubscribe_events();
     spdlog::info(("Renderer deinitialized"));
