@@ -30,6 +30,7 @@ add_executable(engine
         src/graphics/shaders/storage/json_storage.cpp
         src/graphics/hardware/buffer_manager.cpp
         src/graphics/passes/triangle_pass.cpp
+        src/graphics/resource/constant_ring.cpp
 )
 
 cots_apply_compile_flags(engine)
