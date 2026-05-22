@@ -43,8 +43,19 @@ namespace cots::graphics::hardware
 
     std::uint32_t buffer_manager::acquire_slot()
     {
-        for (std::uint32_t i = 1; i < slots_.size(); ++i)   //~ skip slot 0
-            if (slots_[i].generation == 0) return i;
+        for (std::uint32_t i = 1; i < slots_.size(); ++i)
+        {
+            const slot& s = slots_[i];
+
+            //~ truly free slot
+            if (s.generation == 0 &&
+                s.resource == nullptr &&
+                s.allocation == nullptr &&
+                s.mapped == nullptr)
+            {
+                return i;
+            }
+        }
 
         slots_.push_back(slot{});
         return static_cast<std::uint32_t>(slots_.size() - 1);
@@ -58,6 +69,7 @@ namespace cots::graphics::hardware
 
         const std::uint32_t idx = acquire_slot();
         slot& s  = slots_[idx];
+        s.generation = ~0u;
         s.size   = info.size_bytes;
         s.stride = info.stride;
         s.kind   = info.kind;
@@ -149,10 +161,9 @@ namespace cots::graphics::hardware
         std::vector<std::uint32_t> alloc_indices;
         alloc_indices.reserve(infos.size());
 
-        std::vector<upload_record> uploads;
-        uploads.reserve(infos.size());
-
-        //~ allocate all then queue uploads
+        //~ pass one allocate every slot first
+        //  slots vector may grow and invalidate pointers
+        //  so do not capture slot pointers yet
         for (const auto& info : infos)
         {
             const auto a = allocate_only(info);
@@ -169,17 +180,24 @@ namespace cots::graphics::hardware
                 return {};
             }
             alloc_indices.push_back(a.index);
-            slot& s = slots_[a.index];
+        }
 
-            //~ constants already filled
-            if (info.kind != buffer_kind::constant && info.initial_data)
-            {
-                upload_record r{};
-                r.dst  = &s;
-                r.data = info.initial_data;
-                r.size = info.size_bytes;
-                uploads.push_back(r);
-            }
+        //~ pass two build upload records
+        //  slots is stable for the rest of this call
+        std::vector<upload_record> uploads;
+        uploads.reserve(infos.size());
+        for (std::size_t i = 0; i < infos.size(); ++i)
+        {
+            const auto& info = infos[i];
+            if (info.kind == buffer_kind::constant || !info.initial_data)
+                continue;
+
+            slot& s = slots_[alloc_indices[i]];
+            upload_record r{};
+            r.dst  = &s;
+            r.data = info.initial_data;
+            r.size = info.size_bytes;
+            uploads.push_back(r);
         }
 
         //~ one staging one list one wait
@@ -391,7 +409,7 @@ namespace cots::graphics::hardware
         barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         cmd->ResourceBarrier(1, &barrier);
 
-        (void)cmd->Close();
+         (void)cmd->Close();
 
         ID3D12CommandList* lists[] = { cmd.Get() };
         queue->ExecuteCommandLists(1, lists);
@@ -400,12 +418,11 @@ namespace cots::graphics::hardware
         fence flush_fence;
         if (!flush_fence.initialize(*device_))
         {
-            staging_alloc->Release();
-            return false;
+            staging_alloc->Release(); return false;
         }
 
         const std::uint64_t target = flush_fence.signal(queue);
-        (void)flush_fence.wait(target);
+         (void)flush_fence.wait(target);
         flush_fence.deinitialize();
 
         staging_alloc->Release();
@@ -416,8 +433,8 @@ namespace cots::graphics::hardware
     {
         if (!h.valid() || h.index >= slots_.size())
             return;
-        slot& s = slots_[h.index];
 
+        slot& s = slots_[h.index];
         if (s.generation != h.generation)
             return;   //~ stale
 
@@ -471,3 +488,4 @@ namespace cots::graphics::hardware
         return s.generation == h.generation ? s.mapped : nullptr;
     }
 } // namespace cots::graphics::hardware
+
