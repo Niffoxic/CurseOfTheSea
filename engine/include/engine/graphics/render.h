@@ -21,6 +21,7 @@
 #include "engine/graphics/hardware/buffer_manager.h"
 #include "engine/graphics/hardware/descriptor_heap.h"
 #include "engine/graphics/hardware/texture_manager.h"
+#include "engine/graphics/textures/texture_cache.h"
 #include "resource/depth_target.h"
 
 #include "engine/events/windows_event.h"
@@ -104,6 +105,9 @@ namespace cots::graphics
         void process_pending_commands();
         bool build_passes();
 
+        //~ creates the test texture via the current path
+        bool create_test_texture();
+
         //~ handle events
         void subscribe_events  ();
         void unsubscribe_events();
@@ -115,6 +119,9 @@ namespace cots::graphics
         void on_shader_save  (const events::shader::save&   event);
         void on_shader_clear (const events::shader::clear&  event);
         void on_shader_reload(const events::shader::reload& event);
+
+        void on_texture_toggle_bake (const events::texture::toggle_bake_path& event);
+        void on_texture_clear_cache (const events::texture::clear_bake_cache& event);
 
         //~ snapshots
         void publish_snapshot(); // on begin update(MT)
@@ -168,10 +175,15 @@ namespace cots::graphics
             bool          shader_reload  { false };
             std::uint64_t shader_reload_key { 0 };
 
+            //~ texture events
+            bool          texture_toggle_bake  { false };
+            bool          texture_clear_cache  { false };
+
             [[nodiscard]] bool any() const noexcept
             {
                 return resize || change_mode || set_win_size
-                  || shader_save || shader_clear || shader_reload;
+                  || shader_save || shader_clear || shader_reload
+                  || texture_toggle_bake || texture_clear_cache;
             }
         } pending_{};
 
@@ -210,9 +222,13 @@ namespace cots::graphics
         meshes::mesh_registry     mesh_registry_ {};
         hardware::descriptor_heap bindless_heap_ {};
         hardware::texture_manager textures_      {};
+        textures::texture_cache   texture_cache_ {};
 
         //~ test resources kept alive for the lifetime of the renderer
-        hardware::texture_handle  test_texture_  {};
+        hardware::texture_handle  test_texture_     {};
+
+        //~ baked or live
+        bool                      using_baked_path_ { false };
     };
 }
 

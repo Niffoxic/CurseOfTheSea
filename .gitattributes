@@ -6,7 +6,8 @@
 *.hpp    text eol=lf
 *.cmake  text eol=lf
 CMakeLists.txt text eol=lf
-# Binary assets
+
+# Binary assets 
 *.dds binary
 *.png binary
 *.jpg binary
@@ -19,6 +20,5 @@ CMakeLists.txt text eol=lf
 *.fbank binary
 assets/** filter=lfs diff=lfs merge=lfs -text
 
-# keep shader text source out of lfs so it stays diffable and works without an lfs server
 assets/shaders/*.hlsl  !filter !diff !merge text eol=lf
 assets/shaders/*.hlsli !filter !diff !merge text eol=lf

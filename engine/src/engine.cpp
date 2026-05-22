@@ -155,6 +155,11 @@ void cots::engine::test_debug_input() const
     if (kb.pressed(VK_F5)) dispatcher->enqueue<sh::reload>(std::uint64_t{0});
     if (kb.pressed(VK_F6)) dispatcher->enqueue<sh::save>();
     if (kb.pressed(VK_F7)) dispatcher->enqueue<sh::clear>();
+
+    //~ texture bake event tests
+    namespace tx = events::texture;
+    if (kb.pressed(VK_F8))      dispatcher->enqueue<tx::toggle_bake_path>();
+    if (kb.pressed(VK_OEM_3))   dispatcher->enqueue<tx::clear_bake_cache>();
 }
 
 void cots::engine::test_fps() const

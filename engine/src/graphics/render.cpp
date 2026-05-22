@@ -33,6 +33,8 @@
 #include "engine/graphics/shaders/storage/binary_storage.h"
 #include "engine/graphics/shaders/storage/json_storage.h"
 #include "engine/graphics/utils/image_decode.h"
+#include "engine/graphics/textures/texture_cache.h"
+#include "engine/graphics/textures/texture_intent.h"
 #include <cots/cots_config.h>
 
 cots::graphics::render::~render() = default;
@@ -123,16 +125,17 @@ void cots::graphics::render::render_thread_main()
     }
 
     //~ destroy resources
-    graph_        .clear();
-    shader_cache_ .deinitialize();
-    mesh_registry_.deinitialize();
-    textures_     .deinitialize();
-    bindless_heap_.deinitialize();
-    buffers_      .deinitialize();
-    depth_target_ .deinitialize();
-    fence_        .deinitialize();
-    swapchain_    .deinitialize();
-    device_       .deinitialize();
+    graph_         .clear();
+    shader_cache_  .deinitialize();
+    texture_cache_ .deinitialize();
+    mesh_registry_ .deinitialize();
+    textures_      .deinitialize();
+    bindless_heap_ .deinitialize();
+    buffers_       .deinitialize();
+    depth_target_  .deinitialize();
+    fence_         .deinitialize();
+    swapchain_     .deinitialize();
+    device_        .deinitialize();
 
     spdlog::info("render thread stopped");
 }
@@ -166,6 +169,22 @@ bool cots::graphics::render::initialize_render_thread()
         spdlog::error("texture manager init failed");
         return false;
     }
+
+    if (not texture_cache_.initialize())
+    {
+        spdlog::error("texture cache init failed");
+        return false;
+    }
+
+    //~ default texture path
+    //~ debug live release baked
+#if COTS_DEBUG && !COTS_TEXTURES_USE_BAKED_IN_DEBUG
+    using_baked_path_ = false;
+#else
+    using_baked_path_ = true;
+#endif
+    spdlog::info("[render] texture path on startup: {}",
+                 using_baked_path_ ? "baked" : "live");
 
     if (not mesh_registry_.initialize(buffers_))
     {
@@ -350,38 +369,7 @@ bool cots::graphics::render::initialize_render_thread()
         spdlog::info("[shader-test] vs={} bytes, ps={} bytes", vs.size, ps.size);
     }
 
-    //~ test texture live decode
-    {
-        utils::decoded_image img{};
-        constexpr const char* path = "assets/textures/checker.png";
-        if (!utils::decode_image_file(path, img) || !img.valid())
-        {
-            spdlog::warn("[render] '{}' missing falling back to procedural checker", path);
-            //~ red white checker
-            utils::make_checkerboard(
-                256u, 256u, 32u,
-                0xFFFFFFFFu,  //~ white
-                0xFF2030E0u,  //~ pirate red
-                img);
-        }
-
-        hardware::texture_create_info ti{};
-        ti.width      = img.width;
-        ti.height     = img.height;
-        ti.format     = hardware::texture_format::rgba8_unorm_srgb;
-        ti.pixels     = img.pixels.data();
-        ti.row_pitch  = img.row_pitch();
-        ti.debug_name = "checker";
-
-        test_texture_ = textures_.create(ti);
-        if (!test_texture_.valid())
-        {
-            spdlog::error("[render] test texture creation failed");
-            return false;
-        }
-        spdlog::info("[render] test texture in bindless slot {}",
-                     textures_.bindless_slot(test_texture_));
-    }
+    if (not create_test_texture()) return false;
 
     if (not build_passes()) return false;
 
@@ -530,6 +518,108 @@ void cots::graphics::render::process_pending_commands()
         frame_.fence_values.fill(flush);
         frame_.index = 0u;
     }
+
+    //~ wipe the container
+    if (cmd.texture_clear_cache)
+    {
+        texture_cache_.invalidate("assets/textures/checker.png");
+    }
+
+    //~ swap live and baked
+    if (cmd.texture_toggle_bake)
+    {
+        const std::uint64_t flush = fence_.signal(device_.graphics_queue());
+        if (not fence_.wait(flush))
+            spdlog::error("[render] gpu flush before texture toggle failed");
+
+        textures_.destroy(test_texture_);
+        test_texture_ = {};
+
+        using_baked_path_ = !using_baked_path_;
+        spdlog::info("[render] texture path now {}",
+                     using_baked_path_ ? "baked" : "live");
+
+        if (not create_test_texture())
+        {
+            spdlog::error("[render] toggle recreate failed");
+            return;
+        }
+
+        //~ rebuild for the new slot
+        if (not build_passes())
+        {
+            spdlog::error("[render] toggle rebuild failed");
+            return;
+        }
+        frame_.fence_values.fill(flush);
+        frame_.index = 0u;
+    }
+}
+
+bool cots::graphics::render::create_test_texture()
+{
+    constexpr const char* source_path = "assets/textures/checker.png";
+
+    if (using_baked_path_)
+    {
+        //~ bake or load from disk
+        textures::baked_blob blob{};
+        if (texture_cache_.get_or_bake(
+                source_path, textures::texture_intent::albedo, blob)
+            && blob.valid())
+        {
+            hardware::dds_create_info di{};
+            di.dds_data   = blob.dds.data();
+            di.dds_size   = blob.dds.size();
+            di.debug_name = "checker_bc";
+
+            test_texture_ = textures_.create_from_dds(di);
+            if (test_texture_.valid())
+            {
+                spdlog::info("[render] baked test texture in bindless slot {}",
+                             textures_.bindless_slot(test_texture_));
+                return true;
+            }
+            spdlog::warn("[render] baked path failed falling back to live");
+        }
+        else
+        {
+            spdlog::warn("[render] cannot bake '{}' falling back to live", source_path);
+        }
+        //~ baking failed go live
+        using_baked_path_ = false;
+    }
+
+    //~ live decode with fallback
+    utils::decoded_image img{};
+    if (!utils::decode_image_file(source_path, img) || !img.valid())
+    {
+        spdlog::warn("[render] '{}' missing falling back to procedural checker",
+                     source_path);
+        utils::make_checkerboard(
+            256u, 256u, 32u,
+            0xFFFFFFFFu,  //~ white
+            0xFF2030E0u,  //~ pirate red
+            img);
+    }
+
+    hardware::texture_create_info ti{};
+    ti.width      = img.width;
+    ti.height     = img.height;
+    ti.format     = hardware::texture_format::rgba8_unorm_srgb;
+    ti.pixels     = img.pixels.data();
+    ti.row_pitch  = img.row_pitch();
+    ti.debug_name = "checker";
+
+    test_texture_ = textures_.create(ti);
+    if (!test_texture_.valid())
+    {
+        spdlog::error("[render] test texture creation failed");
+        return false;
+    }
+    spdlog::info("[render] live test texture in bindless slot {}",
+                 textures_.bindless_slot(test_texture_));
+    return true;
 }
 
 bool cots::graphics::render::build_passes()
@@ -626,23 +716,27 @@ void cots::graphics::render::submit_frame(const std::vector<ID3D12CommandList*> 
 void cots::graphics::render::subscribe_events()
 {
     const auto d = feature::locator::resolve<events::dispatcher>();
-    d->subscribe<events::window_resized,               &render::on_window_resized>   (*this);
-    d->subscribe<events::swapchain::set_display_mode,  &render::on_set_display_mode> (*this);
-    d->subscribe<events::swapchain::set_windowed_size, &render::on_set_windowed_size>(*this);
-    d->subscribe<events::shader::save,                 &render::on_shader_save>      (*this);
-    d->subscribe<events::shader::clear,                &render::on_shader_clear>     (*this);
-    d->subscribe<events::shader::reload,               &render::on_shader_reload>    (*this);
+    d->subscribe<events::window_resized,                 &render::on_window_resized>       (*this);
+    d->subscribe<events::swapchain::set_display_mode,    &render::on_set_display_mode>     (*this);
+    d->subscribe<events::swapchain::set_windowed_size,   &render::on_set_windowed_size>    (*this);
+    d->subscribe<events::shader::save,                   &render::on_shader_save>          (*this);
+    d->subscribe<events::shader::clear,                  &render::on_shader_clear>         (*this);
+    d->subscribe<events::shader::reload,                 &render::on_shader_reload>        (*this);
+    d->subscribe<events::texture::toggle_bake_path,      &render::on_texture_toggle_bake>  (*this);
+    d->subscribe<events::texture::clear_bake_cache,      &render::on_texture_clear_cache>  (*this);
 }
 
 void cots::graphics::render::unsubscribe_events()
 {
     const auto d = feature::locator::resolve<events::dispatcher>();
-    d->unsubscribe<events::window_resized,               &render::on_window_resized>   (*this);
-    d->unsubscribe<events::swapchain::set_display_mode,  &render::on_set_display_mode> (*this);
-    d->unsubscribe<events::swapchain::set_windowed_size, &render::on_set_windowed_size>(*this);
-    d->unsubscribe<events::shader::save,                 &render::on_shader_save>      (*this);
-    d->unsubscribe<events::shader::clear,                &render::on_shader_clear>     (*this);
-    d->unsubscribe<events::shader::reload,               &render::on_shader_reload>    (*this);
+    d->unsubscribe<events::window_resized,                 &render::on_window_resized>       (*this);
+    d->unsubscribe<events::swapchain::set_display_mode,    &render::on_set_display_mode>     (*this);
+    d->unsubscribe<events::swapchain::set_windowed_size,   &render::on_set_windowed_size>    (*this);
+    d->unsubscribe<events::shader::save,                   &render::on_shader_save>          (*this);
+    d->unsubscribe<events::shader::clear,                  &render::on_shader_clear>         (*this);
+    d->unsubscribe<events::shader::reload,                 &render::on_shader_reload>        (*this);
+    d->unsubscribe<events::texture::toggle_bake_path,      &render::on_texture_toggle_bake>  (*this);
+    d->unsubscribe<events::texture::clear_bake_cache,      &render::on_texture_clear_cache>  (*this);
 }
 
 void cots::graphics::render::on_window_resized(const events::window_resized &event)
@@ -685,6 +779,20 @@ void cots::graphics::render::on_shader_reload(const events::shader::reload& even
     std::lock_guard lock(command_mutex_);
     pending_.shader_reload     = true;
     pending_.shader_reload_key = event.key;
+}
+
+void cots::graphics::render::on_texture_toggle_bake(const events::texture::toggle_bake_path& event)
+{
+    (void)event;
+    std::lock_guard lock(command_mutex_);
+    pending_.texture_toggle_bake = true;
+}
+
+void cots::graphics::render::on_texture_clear_cache(const events::texture::clear_bake_cache& event)
+{
+    (void)event;
+    std::lock_guard lock(command_mutex_);
+    pending_.texture_clear_cache = true;
 }
 
 void cots::graphics::render::publish_snapshot()

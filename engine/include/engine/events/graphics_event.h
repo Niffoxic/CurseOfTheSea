@@ -86,6 +86,15 @@ namespace cots::events
         };
     } // namespace shader
 
+    namespace texture
+    {
+        //~ swap the test texture between live decode and baked
+        struct toggle_bake_path {};
+
+        //~ wipe the disk container for the test texture
+        struct clear_bake_cache {};
+    } // namespace texture
+
 } // namespace cots::events::graphics
 
 #endif //CURSEOFTHESEA_GRAPHICS_EVENT_H
