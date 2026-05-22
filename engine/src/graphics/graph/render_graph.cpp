@@ -14,12 +14,12 @@ namespace cots::graphics::graph
         //~ all sub resources pattern gonna beed for the enhanced barrier convention
         constexpr D3D12_BARRIER_SUBRESOURCE_RANGE k_all_subresources
         {
-            .IndexOrFirstMipLevel = 0,
-            .NumMipLevels         = 0xffffffffu,
+            .IndexOrFirstMipLevel = 0xffffffffu,
+            .NumMipLevels         = 0,
             .FirstArraySlice      = 0,
-            .NumArraySlices       = 0xffffffffu,
+            .NumArraySlices       = 0,
             .FirstPlane           = 0,
-            .NumPlanes            = 0xffffffffu,
+            .NumPlanes            = 0,
         };
     } // namespace anonymous
 
@@ -81,8 +81,7 @@ namespace cots::graphics::graph
     {
         COTS_PROFILE_SCOPE("render_graph::execute");
 
-        //~ resolve every import to its current per frame view
-        resources_.refresh  ();
+        resources_.refresh();
         sync_resource_states();
 
         const pass_context pc
@@ -109,24 +108,17 @@ namespace cots::graphics::graph
 
     bool render_graph::validate() const
     {
-        //~ every imported resource counts as produced from frame start
         std::vector<resource_handle> produced;
         produced.reserve(resources_.size());
-        for (const auto& h : resources_.imports())
-        {
-            produced.push_back(h);
-        }
+        for (const auto& h : resources_.imports()) produced.push_back(h);
 
         auto was_produced = [&](const resource_handle h) -> bool
         {
-            for (const auto& p : produced)
-            {
-                if (p == h) return true;
-            }
+            for (const auto& p : produced) if (p == h) return true;
             return false;
         };
 
-        for (const auto& node: passes_)
+        for (const auto& node : passes_)
         {
             const char* pn = node.p->name();
 
@@ -135,10 +127,9 @@ namespace cots::graphics::graph
                 if (!resources_.exists(a.handle))
                 {
                     spdlog::error("[graph] pass '{}' reads an unresolved handle "
-                                "(idx={}, gen={}) as {}",
-                              pn, a.handle.index, a.handle.generation,
-                                to_string(a.usage)
-                    );
+                                  "(idx={}, gen={}) as {}",
+                                  pn, a.handle.index, a.handle.generation,
+                                  to_string(a.usage));
                     return false;
                 }
                 if (!was_produced(a.handle))
@@ -149,25 +140,23 @@ namespace cots::graphics::graph
                     return false;
                 }
             }
-            for (const auto& w : node.writes)
+            for (const auto& a : node.writes)
             {
-                if (!resources_.exists(w.handle))
+                if (!resources_.exists(a.handle))
                 {
                     spdlog::error("[graph] pass '{}' writes an unresolved handle "
-                                "(idx={}, gen={}) as {}",
-                                pn, w.handle.index, w.handle.generation,
-                                to_string(w.usage)
-                    );
+                                  "(idx={}, gen={}) as {}",
+                                  pn, a.handle.index, a.handle.generation,
+                                  to_string(a.usage));
                     return false;
                 }
-                if (!was_produced(w.handle))
-                    produced.push_back(w.handle);
+                if (!was_produced(a.handle)) produced.push_back(a.handle);
             }
         }
         return true;
     }
 
-     void render_graph::sync_resource_states()
+    void render_graph::sync_resource_states()
     {
         const std::uint32_t n = resources_.size();
 
@@ -191,8 +180,7 @@ namespace cots::graphics::graph
     void render_graph::emit_barriers_for_pass(const pass_node& node,
                                               hardware::command_context& ctx)
     {
-        std::vector<D3D12_TEXTURE_BARRIER> texture_barriers;
-        texture_barriers.reserve(node.reads.size() + node.writes.size());
+        scratch_barriers_.clear();
 
         auto process = [&](const resource_access& access)
         {
@@ -207,6 +195,10 @@ namespace cots::graphics::graph
 
             if (tracked.current == required) return;
 
+            const bool discard =
+                tracked.current.layout == D3D12_BARRIER_LAYOUT_PRESENT ||
+                tracked.current.layout == D3D12_BARRIER_LAYOUT_COMMON;
+
             D3D12_TEXTURE_BARRIER b{};
             b.SyncBefore   = tracked.current.sync;
             b.SyncAfter    = required.sync;
@@ -216,27 +208,27 @@ namespace cots::graphics::graph
             b.LayoutAfter  = required.layout;
             b.pResource    = v.resource;
             b.Subresources = k_all_subresources;
-            b.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+            b.Flags        = discard ? D3D12_TEXTURE_BARRIER_FLAG_DISCARD
+                                     : D3D12_TEXTURE_BARRIER_FLAG_NONE;
 
-            texture_barriers.push_back(b);
+            scratch_barriers_.push_back(b);
             tracked.current = required;
         };
 
         for (const auto& a : node.reads)  process(a);
         for (const auto& a : node.writes) process(a);
 
-        if (texture_barriers.empty()) return;
+        if (scratch_barriers_.empty()) return;
 
         const D3D12_BARRIER_GROUP group
         {
             .Type             = D3D12_BARRIER_TYPE_TEXTURE,
-            .NumBarriers      = static_cast<UINT32>(texture_barriers.size()),
-            .pTextureBarriers = texture_barriers.data(),
+            .NumBarriers      = static_cast<UINT32>(scratch_barriers_.size()),
+            .pTextureBarriers = scratch_barriers_.data(),
         };
 
         auto* list = ctx.list();
         if (list)
             list->Barrier(1, &group);
     }
-
 } // namespace cots::graphics::graph

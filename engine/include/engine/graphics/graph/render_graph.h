@@ -88,6 +88,8 @@ namespace cots::graphics::graph
         std::vector<pass_node>        passes_;
         std::vector<tracked_resource> states_;
         resource_registry             resources_;
+
+        std::vector<D3D12_TEXTURE_BARRIER> scratch_barriers_;
     };
 } // namespace cots::graphics::graph
 

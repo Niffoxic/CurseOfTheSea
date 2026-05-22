@@ -411,6 +411,20 @@ void cots::graphics::render::process_pending_commands()
     if (cmd.shader_clear)  shader_cache_.clear();
     if (cmd.shader_reload) shader_cache_.recompile(cmd.shader_reload_key);
 
+    if (cmd.resize &&
+       cmd.resize_w == swapchain_.width() &&
+       cmd.resize_h == swapchain_.height())
+    {
+        cmd.resize = false;
+    }
+    if (cmd.set_win_size &&
+        cmd.win_w == swapchain_.width() &&
+        cmd.win_h == swapchain_.height() &&
+        swapchain_.current_mode() == hardware::display_mode::windowed)
+    {
+        cmd.set_win_size = false;
+    }
+
     //~ swapchain ops need the GPU idle first
     if (cmd.change_mode || cmd.set_win_size || cmd.resize)
     {
@@ -424,9 +438,12 @@ void cots::graphics::render::process_pending_commands()
         if (cmd.resize)       ok = swapchain_.resize           (device_, cmd.resize_w, cmd.resize_h) && ok;
         if (not ok) spdlog::error("[render] swapchain command(s) failed");
 
-        //~ rebuild depth target to match the new backbuffer size
-        if (not depth_target_.resize(device_, swapchain_.width(), swapchain_.height()))
-            spdlog::error("[render] depth target resize failed");
+        if (depth_target_.width()  != swapchain_.width() ||
+            depth_target_.height() != swapchain_.height())
+        {
+            if (not depth_target_.resize(device_, swapchain_.width(), swapchain_.height()))
+                spdlog::error("[render] depth target resize failed");
+        }
 
         frame_.fence_values.fill(flush);
         frame_.index = 0u;
