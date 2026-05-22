@@ -28,6 +28,7 @@
 #include "hardware/types.h"
 
 #include "passes/pass.h"
+#include "graph/render_graph.h"
 #include "render_snapshot.h"
 #include "meshes/mesh_registry.h"
 
@@ -195,7 +196,7 @@ namespace cots::graphics
         } snapshots_;
 
         //~ render graph
-        std::vector<std::unique_ptr<pass>> passes_;
+        graph::render_graph graph_{};
 
         //~ benchmarks
         std::atomic<float> stat_fps_     { 0.f };

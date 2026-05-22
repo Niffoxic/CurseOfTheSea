@@ -20,14 +20,14 @@
 #include <d3d12.h>
 #include <dxgi1_6.h>
 
-//~ render graph passes
-#include "engine/graphics/passes/pass_context.h"
+//~ render graph
 #include "engine/graphics/passes/pass.h"
 #include "engine/graphics/passes/clear_pass.h"
 #include "engine/graphics/passes/present_pass.h"
 #include "engine/graphics/passes/triangle_pass.h"
-#include "engine/graphics/meshes/mesh_registry.h"
 #include "engine/graphics/passes/mesh_pass.h"
+#include "engine/graphics/meshes/mesh_registry.h"
+#include "engine/graphics/graph/render_graph.h"
 
 //~ test
 #include "engine/graphics/shaders/storage/binary_storage.h"
@@ -122,6 +122,7 @@ void cots::graphics::render::render_thread_main()
     }
 
     //~ destroy resources
+    graph_        .clear();
     shader_cache_ .deinitialize();
     mesh_registry_.deinitialize();
     buffers_      .deinitialize();
@@ -374,23 +375,16 @@ void cots::graphics::render::record_frame(
     auto& ctx = frame_.contexts[frame];
     if (!ctx.reset()) return;
 
-    const pass_context pc
+    const graph::execute_context ec
     {
-        .ctx          = ctx,
-        .snap         = snap,
-        .backbuffer   = swapchain_.current_backbuffer(),
-        .depth_target = depth_target_.resource(),
-        .rtv_handle   = swapchain_.current_rtv_handle(),
-        .dsv_handle   = depth_target_.dsv_handle(),
-        .width        = swapchain_.width(),
-        .height       = swapchain_.height(),
-        .frame_index  = frame,
+        .ctx         = ctx,
+        .snap        = snap,
+        .width       = swapchain_.width(),
+        .height      = swapchain_.height(),
+        .frame_index = frame,
     };
 
-    for (const auto& p : passes_)
-    {
-        p->execute(pc);
-    }
+    graph_.execute(ec);
 
     if (not ctx.close()) [[unlikely]]
     {
@@ -441,28 +435,56 @@ void cots::graphics::render::process_pending_commands()
 
 bool cots::graphics::render::build_passes()
 {
-    passes_.clear();
-    passes_.push_back(std::make_unique<passes::clear_pass>());
-    passes_.push_back(std::make_unique<passes::mesh_pass>());
-    passes_.push_back(std::make_unique<passes::present_pass>());
+    graph_.clear();
+
+    //~ import resources owned by the renderer
+    // the backbuffer provider re resolves each frame to the swap chains
+    // current frame in flight index so the imported handle always points
+    // at the right d3d resource and rtv
+    const auto h_backbuffer = graph_.resources().import(
+        "backbuffer",
+        [this]() -> graph::resource_view
+        {
+            return graph::resource_view
+            {
+                .resource    = swapchain_.current_backbuffer(),
+                .view_handle = swapchain_.current_rtv_handle(),
+                .width       = swapchain_.width(),
+                .height      = swapchain_.height(),
+            };
+        });
+
+    const auto h_depth = graph_.resources().import(
+        "depth",
+        [this]() -> graph::resource_view
+        {
+            return graph::resource_view
+            {
+                .resource    = depth_target_.resource(),
+                .view_handle = depth_target_.dsv_handle(),
+                .width       = depth_target_.width(),
+                .height      = depth_target_.height(),
+            };
+        });
+
+    //~ insertion order TODO: add automatic topological sort
+    graph_.add_pass(std::make_unique<passes::clear_pass>  (h_backbuffer, h_depth));
+    graph_.add_pass(std::make_unique<passes::mesh_pass>   (h_backbuffer, h_depth));
+    graph_.add_pass(std::make_unique<passes::present_pass>(h_backbuffer, h_depth));
 
     const setup_context sc
     {
         .device  = device_,
         .shaders = shader_cache_,
         .buffers = buffers_,
-        .meshes = mesh_registry_
+        .meshes  = mesh_registry_
     };
 
-    for (auto& p : passes_)
+    if (not graph_.compile(sc))
     {
-        if (not p->setup(sc))
-        {
-            spdlog::error("[render] pass '{}' setup failed", p->name());
-            return false;
-        }
+        spdlog::error("[render] graph compile failed");
+        return false;
     }
-    spdlog::info("[render] {} pass(es) ready", passes_.size());
     return true;
 }
 
