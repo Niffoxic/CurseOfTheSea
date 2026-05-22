@@ -36,7 +36,9 @@ namespace cots::graphics
         const scene_snapshot&      snap;
 
         ID3D12Resource2*           backbuffer;   //~ TODO: generalizes to named resources later
+        ID3D12Resource2*           depth_target;
         std::size_t                rtv_handle;
+        std::size_t                dsv_handle;
 
         std::uint32_t              width;
         std::uint32_t              height;

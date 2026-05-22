@@ -142,13 +142,18 @@ namespace cots::graphics::passes
         pso.RasterizerState.DepthClipEnable       = TRUE;
 
         pso.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-        pso.DepthStencilState.DepthEnable   = FALSE;
-        pso.DepthStencilState.StencilEnable = FALSE;
+
+        //~ reversed z for better comparison depth write on stencil reserved (disabled for now)
+        pso.DepthStencilState.DepthEnable    = TRUE;
+        pso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        pso.DepthStencilState.DepthFunc      = D3D12_COMPARISON_FUNC_GREATER;
+        pso.DepthStencilState.StencilEnable  = FALSE;
 
         pso.SampleMask            = UINT_MAX;
         pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         pso.NumRenderTargets      = 1;
         pso.RTVFormats[0]         = DXGI_FORMAT_R8G8B8A8_UNORM;
+        pso.DSVFormat             = DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
         pso.SampleDesc            = { 1, 0 };
 
         if (FAILED(d3d->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&pso_))))
@@ -181,7 +186,7 @@ namespace cots::graphics::passes
             std::memcpy(dst, &fc, sizeof(fc));
         }
 
-        pc.ctx.set_render_target(pc.rtv_handle);
+        pc.ctx.set_render_target(pc.rtv_handle, pc.dsv_handle);
 
         const D3D12_VIEWPORT vp
         {

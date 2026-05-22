@@ -12,5 +12,12 @@ namespace cots::graphics::passes
         pc.ctx.transition(pc.backbuffer,
                           hardware::resource_state::render_target,
                           hardware::resource_state::present);
+
+        if (pc.depth_target)
+        {
+            pc.ctx.transition(pc.depth_target,
+                              hardware::resource_state::depth_write,
+                              hardware::resource_state::common);
+        }
     }
 } // namespace cots::graphics::passes

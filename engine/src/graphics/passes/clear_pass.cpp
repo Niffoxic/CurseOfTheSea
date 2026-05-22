@@ -15,9 +15,16 @@ namespace cots::graphics::passes
                           hardware::resource_state::present,
                           hardware::resource_state::render_target);
 
-        pc.ctx.set_render_target(pc.rtv_handle);
+        if (pc.depth_target)
+        {
+            pc.ctx.transition(pc.depth_target,
+                              hardware::resource_state::common,
+                              hardware::resource_state::depth_write);
+        }
 
-        //~ snapshot-driven color
+        pc.ctx.set_render_target(pc.rtv_handle, pc.dsv_handle);
+
+        //~ snapshot driven color
         const float t = static_cast<float>(pc.snap.frame_id) * 0.01f;
         const float color[4] =
         {
@@ -26,6 +33,8 @@ namespace cots::graphics::passes
             0.5f + 0.5f * std::sin(t * 1.3f + 4.0f),
             1.0f
         };
+        //~ clear handles for the frame
         pc.ctx.clear_render_target(pc.rtv_handle, color);
+        pc.ctx.clear_depth_stencil(pc.dsv_handle, 0.0f, 0);
     }
-} // namespace cots::graphics::graph
+} // namespace cots::graphics::passes
