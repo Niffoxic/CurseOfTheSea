@@ -55,6 +55,8 @@ namespace cots::graphics::graph
         //~ refresh imports derive and emit barriers per pass
         void execute(const execute_context& ec);
 
+        void invalidate_resource_states();
+
         resource_registry&       resources() noexcept       { return resources_; }
         const resource_registry& resources() const noexcept { return resources_; }
 

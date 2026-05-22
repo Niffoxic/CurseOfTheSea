@@ -444,7 +444,7 @@ void cots::graphics::render::process_pending_commands()
             if (not depth_target_.resize(device_, swapchain_.width(), swapchain_.height()))
                 spdlog::error("[render] depth target resize failed");
         }
-
+        graph_.invalidate_resource_states();
         frame_.fence_values.fill(flush);
         frame_.index = 0u;
     }

@@ -101,6 +101,15 @@ namespace cots::graphics::graph
         }
     }
 
+    void render_graph::invalidate_resource_states()
+    {
+        for (auto& t : states_)
+        {
+            t.initialized = false;
+            t.last_seen   = nullptr;
+        }
+    }
+
     std::uint32_t render_graph::pass_count() const noexcept
     {
         return static_cast<std::uint32_t>(passes_.size());
