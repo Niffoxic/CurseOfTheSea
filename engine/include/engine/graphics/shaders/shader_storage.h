@@ -7,14 +7,20 @@
 #include <vector>
 #include <unordered_map>
 
+#include "engine/graphics/shaders/vertex_layout.h"
+
 namespace cots::graphics::shaders
 {
+    constexpr std::uint32_t k_cache_schema_version = 1;
+
     struct shader_cache_entry
     {
-        std::uint64_t             key         { 0 };
-        std::uint64_t             source_hash { 0 };
-        std::string               identifier  {};
-        std::vector<std::uint8_t> dxil        {};
+        std::uint64_t             key           { 0 };
+        std::uint32_t             schema_version{ 0 };
+        std::uint64_t             source_hash   { 0 };
+        std::string               identifier          {};
+        std::vector<std::uint8_t> dxil                {};
+        std::vector<vertex_input_element> input_layout{};
     };
 
     using cache_map = std::unordered_map<std::uint64_t, shader_cache_entry>;

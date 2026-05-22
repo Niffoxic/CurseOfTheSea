@@ -12,13 +12,19 @@ struct ID3D12Resource2;
 
 namespace cots::graphics
 {
-    namespace hardware { class device;       }
+    namespace hardware
+    {
+        class device;
+        class buffer_manager;
+    } // namespace hardware
+
     namespace shaders  { class shader_cache; }
 
     struct setup_context
     {
-        hardware::device&       device;
-        shaders::shader_cache&  shaders;
+        hardware::device&         device;
+        shaders::shader_cache&    shaders;
+        hardware::buffer_manager& buffers;
     };
 
     //~ everything a pass needs for one frame of recording

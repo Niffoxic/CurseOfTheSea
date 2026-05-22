@@ -17,6 +17,8 @@ namespace cots::graphics::shaders
         const std::uint8_t* data { nullptr };
         std::size_t         size { 0 };
 
+        const std::vector<vertex_input_element>* input_layout { nullptr };
+
         [[nodiscard]] bool valid() const noexcept
         {
             return data && size;

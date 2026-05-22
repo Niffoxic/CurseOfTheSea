@@ -20,7 +20,7 @@ namespace cots::graphics::shaders
 
     private:
         bool write_entry(std::ofstream& f, const shader_cache_entry& e);
-        bool ensure_header();   //~ creates file with header if missing
+        bool ensure_header() const;   //~ creates file with header if missing
 
     private:
         std::string path_;

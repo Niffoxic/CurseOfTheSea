@@ -353,6 +353,7 @@ bool cots::graphics::render::build_passes()
     {
         .device  = device_,
         .shaders = shader_cache_,
+        .buffers = buffers_
     };
 
     for (auto& p : passes_)

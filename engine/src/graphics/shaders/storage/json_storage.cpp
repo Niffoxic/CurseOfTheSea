@@ -35,10 +35,32 @@ namespace cots::graphics::shaders
         for (const auto& je : j["entries"])
         {
             shader_cache_entry e{};
-            e.key         = std::stoull(je.value("key", "0"), nullptr, 16);
-            e.source_hash = std::stoull(je.value("source_hash", "0"), nullptr, 16);
-            e.identifier  = je.value("id", "");
-            e.dxil        = helpers::b64_decode(je.value("dxil", ""));
+            e.key = std::stoull(
+                je.value("key", "0"),
+                nullptr,
+                16
+            );
+            e.schema_version = je.value("schema_version", 0u);
+            e.source_hash    = std::stoull(
+                je.value("source_hash", "0"),
+                nullptr,
+                16
+            );
+            e.identifier = je.value("id", "");
+            e.dxil       = helpers::b64_decode(je.value("dxil", ""));
+
+            if (je.contains("layout"))
+            {
+                for (const auto& jl : je["layout"])
+                {
+                    vertex_input_element el{};
+                    el.semantic_name  = jl.value("semantic", "");
+                    el.semantic_index = jl.value("semantic_index", 0u);
+                    el.format         = jl.value("format", 0u);
+                    el.input_slot     = jl.value("input_slot", 0u);
+                    e.input_layout.push_back(std::move(el));
+                }
+            }
             out.emplace(e.key, std::move(e));
         }
         spdlog::info("[shader] loaded {} cached shader(s) (json)", out.size());
@@ -54,14 +76,25 @@ namespace cots::graphics::shaders
         nlohmann::json j;
         j["version"] = 1;
         auto& arr = j["entries"] = nlohmann::json::array();
-        for (const auto& [key, e] : in)
+        for (const auto &e: in | std::views::values)
         {
-            arr.push_back(
-        {
-                { "key",         std::format("{:016x}", e.key)         },
-                { "source_hash", std::format("{:016x}", e.source_hash) },
-                { "id",          e.identifier },
-                { "dxil",        helpers::b64_encode(e.dxil) },
+            nlohmann::json layout = nlohmann::json::array();
+            for (const auto& el : e.input_layout)
+                layout.push_back(
+            {
+                    { "semantic",       el.semantic_name  },
+                    { "semantic_index", el.semantic_index },
+                    { "format",         el.format         },
+                    { "input_slot",     el.input_slot     },
+                });
+
+            arr.push_back({
+                { "key",            std::format("{:016x}", e.key)         },
+                { "schema_version", e.schema_version                      },
+                { "source_hash",    std::format("{:016x}", e.source_hash) },
+                { "id",             e.identifier                          },
+                { "dxil",           helpers::b64_encode(e.dxil)           },
+                { "layout",         layout                                },
             });
         }
 

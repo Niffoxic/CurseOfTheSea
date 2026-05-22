@@ -8,6 +8,8 @@
 #include <wrl/client.h>
 #include <dxcapi.h>
 
+#include "engine/graphics/shaders/vertex_layout.h"
+
 struct IDxcUtils;
 struct IDxcCompiler3;
 struct IDxcIncludeHandler;
@@ -46,9 +48,11 @@ namespace cots::graphics::shaders
         [[nodiscard]] bool initialize  ();
                       void deinitialize() noexcept;
 
-        //~ compiles hlsl to dxil
+        //~ compiles hlsl to dxil  optionally reflects the vertex input layout
         [[nodiscard]] bool compile(const shader_compile_desc& desc,
-                                   std::vector<std::uint8_t>& out_dxil) const;
+                                   std::vector<std::uint8_t>& out_dxil,
+                                   std::vector<vertex_input_element>* out_layout = nullptr
+        ) const;
 
         [[nodiscard]] static const wchar_t* profile_for(shader_stage stage) noexcept;
 
