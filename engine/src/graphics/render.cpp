@@ -25,6 +25,8 @@
 #include "engine/graphics/passes/clear_pass.h"
 #include "engine/graphics/passes/present_pass.h"
 #include "engine/graphics/passes/triangle_pass.h"
+#include "engine/graphics/meshes/mesh_registry.h"
+#include "engine/graphics/passes/mesh_pass.h"
 
 //~ test
 #include "engine/graphics/shaders/storage/binary_storage.h"
@@ -116,11 +118,12 @@ void cots::graphics::render::render_thread_main()
     }
 
     //~ destroy resources
-    shader_cache_.deinitialize();
-    buffers_     .deinitialize();
-    fence_       .deinitialize();
-    swapchain_   .deinitialize();
-    device_      .deinitialize();
+    shader_cache_ .deinitialize();
+    mesh_registry_.deinitialize();
+    buffers_      .deinitialize();
+    fence_        .deinitialize();
+    swapchain_    .deinitialize();
+    device_       .deinitialize();
 
     spdlog::info("render thread stopped");
 }
@@ -139,25 +142,40 @@ bool cots::graphics::render::initialize_render_thread()
         spdlog::error("buffer manager init failed");
         return false;
     }
-
-    //~ test
+    if (not mesh_registry_.initialize(buffers_))
     {
-        const std::uint32_t test_data[4] =
+        spdlog::error("mesh registry init failed");
+        return false;
+    }
+    //~ testing quad
+    {
+        //~ unit quad in XY
+        static constexpr float positions[] =
         {
-            0xDEADBEEF, 0x12345678, 0xCAFEBABE, 0x0BADF00D
+            -0.5f, -0.5f, 0.0f,   0.5f, -0.5f, 0.0f,
+             0.5f,  0.5f, 0.0f,  -0.5f,  0.5f, 0.0f,
         };
+        static constexpr float colors[] =
+        {
+            1,0,0,  0,1,0,  0,0,1,  1,1,1,
+        };
+        static constexpr std::uint16_t indices[] = { 0,1,2, 0,2,3 };
 
-        hardware::buffer_create_info bi{};
-        bi.size_bytes   = sizeof(test_data);
-        bi.kind         = hardware::buffer_kind::generic;
-        bi.initial_data = test_data;
-        bi.debug_name   = "test_buffer";
+        meshes::mesh_desc qd{};
+        qd.streams =
+        {
+            { "POSITION", positions, sizeof(positions), sizeof(float) * 3 },
+            { "COLOR",    colors,    sizeof(colors),    sizeof(float) * 3 },
+        };
+        qd.vertex_count = 4;
+        qd.index_data   = indices;
+        qd.index_bytes  = sizeof(indices);
+        qd.index_count  = 6;
+        qd.index_16bit  = true;
+        qd.debug_name   = "quad";
 
-        const auto h = buffers_.create(bi);
-        spdlog::info("[buf-test] created handle {{idx={}, gen={}}}, gpu_addr=0x{:X}",
-                     h.index, h.generation, buffers_.gpu_address(h));
-
-        buffers_.destroy(h);
+        const auto id = mesh_registry_.create(qd);
+        spdlog::info("[render] registered quad as mesh {}", id);
     }
 
     //~ initialize fence
@@ -346,14 +364,15 @@ bool cots::graphics::render::build_passes()
 {
     passes_.clear();
     passes_.push_back(std::make_unique<passes::clear_pass>());
-    passes_.push_back(std::make_unique<passes::triangle_pass>());
+    passes_.push_back(std::make_unique<passes::mesh_pass>());
     passes_.push_back(std::make_unique<passes::present_pass>());
 
     const setup_context sc
     {
         .device  = device_,
         .shaders = shader_cache_,
-        .buffers = buffers_
+        .buffers = buffers_,
+        .meshes = mesh_registry_
     };
 
     for (auto& p : passes_)

@@ -18,13 +18,15 @@ namespace cots::graphics
         class buffer_manager;
     } // namespace hardware
 
-    namespace shaders  { class shader_cache; }
+    namespace shaders{ class shader_cache;  }
+    namespace meshes { class mesh_registry; }
 
     struct setup_context
     {
         hardware::device&         device;
         shaders::shader_cache&    shaders;
         hardware::buffer_manager& buffers;
+        meshes::mesh_registry&    meshes;
     };
 
     //~ everything a pass needs for one frame of recording

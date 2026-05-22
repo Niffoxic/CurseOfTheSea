@@ -28,7 +28,7 @@
 
 #include "passes/pass.h"
 #include "render_snapshot.h"
-
+#include "meshes/mesh_registry.h"
 
 namespace cots::graphics
 {
@@ -197,8 +197,8 @@ namespace cots::graphics
         //~ core
         shaders::shader_cache    shader_cache_{};
         hardware::buffer_manager buffers_     {};
+        meshes::mesh_registry   mesh_registry_{};
     };
 }
 
 #endif //CURSEOFTHESEA_RENDER_H
-

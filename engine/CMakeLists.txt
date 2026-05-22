@@ -32,6 +32,7 @@ add_executable(engine
         src/graphics/passes/triangle_pass.cpp
         src/graphics/resource/constant_ring.cpp
         src/graphics/meshes/mesh_registry.cpp
+        src/graphics/passes/mesh_pass.cpp
 )
 
 cots_apply_compile_flags(engine)
