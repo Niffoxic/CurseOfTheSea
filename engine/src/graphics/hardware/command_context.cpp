@@ -157,6 +157,12 @@ namespace cots::graphics::hardware
         );
     }
 
+    void command_context::set_descriptor_heap(ID3D12DescriptorHeap* heap) const
+    {
+        if (!is_open_ || !heap) return;
+        list_->SetDescriptorHeaps(1, &heap);
+    }
+
     ID3D12GraphicsCommandList7* command_context::list() const noexcept
     {
         return list_.Get();

@@ -14,6 +14,7 @@ namespace cots::graphics::graph
         depth_write,
         depth_read,
         shader_read,
+        pixel_shader_resource,
         copy_source,
         copy_dest,
         unordered_access,
@@ -24,15 +25,16 @@ namespace cots::graphics::graph
     {
         switch (u)
         {
-        case resource_usage::common:           return "common";
-        case resource_usage::render_target:    return "render_target";
-        case resource_usage::depth_write:      return "depth_write";
-        case resource_usage::depth_read:       return "depth_read";
-        case resource_usage::shader_read:      return "shader_read";
-        case resource_usage::copy_source:      return "copy_source";
-        case resource_usage::copy_dest:        return "copy_dest";
-        case resource_usage::unordered_access: return "unordered_access";
-        case resource_usage::present:          return "present";
+        case resource_usage::common:                return "common";
+        case resource_usage::render_target:         return "render_target";
+        case resource_usage::depth_write:           return "depth_write";
+        case resource_usage::depth_read:            return "depth_read";
+        case resource_usage::shader_read:           return "shader_read";
+        case resource_usage::pixel_shader_resource: return "pixel_shader_resource";
+        case resource_usage::copy_source:           return "copy_source";
+        case resource_usage::copy_dest:             return "copy_dest";
+        case resource_usage::unordered_access:      return "unordered_access";
+        case resource_usage::present:               return "present";
         }
         return "?";
     }

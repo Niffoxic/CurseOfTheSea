@@ -44,6 +44,12 @@ namespace cots::graphics::graph
                      D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                      D3D12_BARRIER_LAYOUT_SHADER_RESOURCE };
 
+        case resource_usage::pixel_shader_resource:
+            //~ sampled in pixel stage
+            return { D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                     D3D12_BARRIER_LAYOUT_SHADER_RESOURCE };
+
         case resource_usage::copy_source:
             return { D3D12_BARRIER_SYNC_COPY,
                      D3D12_BARRIER_ACCESS_COPY_SOURCE,

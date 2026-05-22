@@ -8,6 +8,7 @@
 
 struct ID3D12CommandAllocator;
 struct ID3D12GraphicsCommandList7;
+struct ID3D12DescriptorHeap;
 
 namespace cots::graphics::hardware
 {
@@ -40,6 +41,9 @@ namespace cots::graphics::hardware
         void clear_depth_stencil(std::size_t dsv_handle, float depth, std::uint8_t stencil) const;
         void set_render_target  (std::size_t rtv_handle)                                    const;
         void set_render_target  (std::size_t rtv_handle, std::size_t dsv_handle)            const;
+
+        //~ bind the bindless heap
+        void set_descriptor_heap(ID3D12DescriptorHeap* heap) const;
 
         [[nodiscard]] ID3D12GraphicsCommandList7* list() const noexcept;
 

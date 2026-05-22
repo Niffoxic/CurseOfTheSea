@@ -103,8 +103,12 @@ namespace cots::graphics::graph
 
     void render_graph::invalidate_resource_states()
     {
-        for (auto& t : states_)
+        //~ preserve keeps the layout
+        for (const auto h : resources_.imports())
         {
+            if (h.index >= states_.size())          continue;
+            if (resources_.preserve_contents(h))    continue;
+            auto& t = states_[h.index];
             t.initialized = false;
             t.last_seen   = nullptr;
         }
@@ -182,7 +186,8 @@ namespace cots::graphics::graph
                 tracked.current     = to_barrier_state(resources_.initial_usage(h));
                 tracked.last_seen   = v.resource;
                 tracked.initialized = true;
-                tracked.first_use   = true;
+                //~ preserve knows the layout
+                tracked.first_use   = !resources_.preserve_contents(h);
             }
         }
     }
@@ -206,9 +211,10 @@ namespace cots::graphics::graph
             const bool first = tracked.first_use;
             if (!first && tracked.current == required) return;
 
+            //~ common preserves contents
+            //~ discard only on present or first
             const bool discard = first ||
-                tracked.current.layout == D3D12_BARRIER_LAYOUT_PRESENT ||
-                tracked.current.layout == D3D12_BARRIER_LAYOUT_COMMON;
+                tracked.current.layout == D3D12_BARRIER_LAYOUT_PRESENT;
 
             D3D12_TEXTURE_BARRIER b{};
             b.SyncBefore   = first ? D3D12_BARRIER_SYNC_NONE

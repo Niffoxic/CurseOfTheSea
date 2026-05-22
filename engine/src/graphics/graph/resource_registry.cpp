@@ -11,7 +11,8 @@ namespace cots::graphics::graph
 
     resource_handle resource_registry::import(const char* debug_name,
                                               const resource_usage initial_usage,
-                                              resource_provider provider)
+                                              resource_provider provider,
+                                              const bool preserve_contents)
     {
         COTS_ASSERT(provider && "resource_registry::import requires a provider");
 
@@ -19,10 +20,11 @@ namespace cots::graphics::graph
         const std::uint32_t gen   = next_generation_++;
 
         entry e{};
-        e.debug_name    = debug_name ? debug_name : "<unnamed>";
-        e.provider      = std::move(provider);
-        e.initial_usage = initial_usage;
-        e.generation    = gen;
+        e.debug_name        = debug_name ? debug_name : "<unnamed>";
+        e.provider          = std::move(provider);
+        e.initial_usage     = initial_usage;
+        e.preserve_contents = preserve_contents;
+        e.generation        = gen;
         entries_.push_back(std::move(e));
 
         const resource_handle h{ index, gen };
@@ -63,6 +65,12 @@ namespace cots::graphics::graph
     {
         if (!exists(h)) return resource_usage::common;
         return entries_[h.index].initial_usage;
+    }
+
+    bool resource_registry::preserve_contents(const resource_handle h) const
+    {
+        if (!exists(h)) return false;
+        return entries_[h.index].preserve_contents;
     }
 
     bool resource_registry::exists(const resource_handle h) const noexcept
