@@ -9,6 +9,7 @@
 #include <spdlog/spdlog.h>
 
 #include "engine/audio/audio_system.h"
+#include "engine/graphics/render.h"
 #include "engine/system/feature_locator.h"
 #include <timeapi.h>
 

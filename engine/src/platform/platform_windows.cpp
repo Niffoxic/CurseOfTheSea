@@ -7,6 +7,25 @@
 #include "engine/system/feature_locator.h"
 #include "spdlog/spdlog.h"
 
+#if COTS_EDITOR_ENABLED
+#include "editor/editor.h"
+#endif
+
+namespace
+{
+    //~ message is a mouse event
+    constexpr bool is_mouse_message(const UINT m) noexcept
+    {
+        return (m >= WM_MOUSEFIRST && m <= WM_MOUSELAST) || m == WM_INPUT;
+    }
+
+    //~ message is a keyboard event
+    constexpr bool is_keyboard_message(const UINT m) noexcept
+    {
+        return (m >= WM_KEYFIRST && m <= WM_KEYLAST);
+    }
+} // namespace
+
 namespace cots::platform
 {
     windows::~windows()
@@ -231,8 +250,25 @@ namespace cots::platform
         HWND hwnd, const UINT message,
         const WPARAM w_param, const LPARAM l_param)
     {
+#if COTS_EDITOR_ENABLED
+        //~ hand the message to the editor queue
+        editor::queue_win32_message(hwnd, message, w_param, l_param);
+
+        const bool capture_mouse = editor::want_capture_mouse();
+        const bool capture_kbd   = editor::want_capture_keyboard();
+
+        if (!(capture_mouse && is_mouse_message(message)))
+        {
+            mouse.poll_messages(message, w_param, l_param);
+        }
+        if (!(capture_kbd && is_keyboard_message(message)))
+        {
+            keyboard.poll_messages(message, w_param, l_param);
+        }
+#else
         keyboard.poll_messages(message, w_param, l_param);
         mouse   .poll_messages(message, w_param, l_param);
+#endif
 
         switch (message)
         {
