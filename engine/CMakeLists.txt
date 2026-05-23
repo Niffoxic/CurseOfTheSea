@@ -7,6 +7,7 @@ add_executable(engine
         src/system/service_registry.cpp
         src/services/log_services.cpp
         src/services/window_services.cpp
+        src/services/editor_services.cpp
         src/platform/components/keyboard_component.cpp
         src/platform/components/mouse_component.cpp
         src/audio/audio_system.cpp
@@ -64,6 +65,10 @@ target_compile_features(engine PUBLIC cxx_std_23)
 
 add_dependencies(engine game)
 target_link_libraries(engine PRIVATE cots_shared)
+
+if(COTS_USE_EDITOR)
+    target_link_libraries(engine PRIVATE editor)
+endif()
 
 include(cots_dependencies)
 cots_add_general_dependencies(engine)
