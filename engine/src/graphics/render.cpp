@@ -41,6 +41,10 @@
 #include "engine/graphics/meshes/gltf_importer.h"
 #include "engine/graphics/meshes/imported_model.h"
 
+#if COTS_EDITOR_ENABLED
+#include "editor/editor.h"
+#endif
+
 cots::graphics::render::~render() = default;
 
 bool cots::graphics::render::initialize()
@@ -133,6 +137,10 @@ void cots::graphics::render::render_thread_main()
     {
         spdlog::error("[very unexpected] fence wait failed");
     }
+
+#if COTS_EDITOR_ENABLED
+    editor::shutdown_on_render_thread();
+#endif
 
     //~ destroy resources
     graph_         .clear();
@@ -446,6 +454,20 @@ bool cots::graphics::render::initialize_render_thread()
 
     if (not create_test_texture()) return false;
 
+#if COTS_EDITOR_ENABLED
+    //~ editor lives entirely on this thread
+    // bindless heap font slot win32 backend dx12 backend retained panels
+    {
+        const auto win = feature::locator::resolve<platform::windows>();
+        const HWND hwnd = win ? win->get_window_handle() : nullptr;
+        if (not editor::init_on_render_thread(device_, bindless_heap_, hwnd))
+        {
+            spdlog::error("[render] editor render thread init failed");
+            return false;
+        }
+    }
+#endif
+
     if (not build_passes()) return false;
 
     render_ready_.store(true, std::memory_order_release);
@@ -459,7 +481,6 @@ void cots::graphics::render::draw_frame(const scene_snapshot& snap)
     using clock = std::chrono::steady_clock;
 
     //~ TODO: warp this ins frame stats data or something later ig
-    //~ RT-only accumulator - no sync needed, only this thread touches it
     static clock::time_point window_start = clock::now();
     static double            accum_ms     = 0.0;
     static std::uint32_t     accum_frames = 0;
@@ -543,12 +564,21 @@ void cots::graphics::render::process_pending_commands()
 {
     COTS_PROFILE_SCOPE("render::process_pending_commands");
 
-    decltype(pending_) cmd;
+    decltype(pending_)                 cmd;
+    std::vector<std::function<void()>> editor_cmds;
     {
         std::lock_guard lock(command_mutex_);
-        if (!pending_.any()) return;
+        if (!pending_.any() && pending_editor_commands_.empty()) return;
         cmd      = pending_;
         pending_ = {};
+        editor_cmds.swap(pending_editor_commands_);
+    }
+
+    //~ drain editor side commands first
+    // these are gpu affecting lambdas pushed by the editor on the main thread
+    for (auto& fn : editor_cmds)
+    {
+        if (fn) fn();
     }
 
     //~ shader ops are CPU-only no GPU flush needed
@@ -755,6 +785,10 @@ bool cots::graphics::render::build_passes()
     //~ insertion order TODO: add automatic topological sort
     graph_.add_pass(std::make_unique<passes::clear_pass>  (h_backbuffer, h_depth));
     graph_.add_pass(std::make_unique<passes::mesh_pass>   (h_backbuffer, h_depth, h_test_texture, test_index));
+#if COTS_EDITOR_ENABLED
+    //~ editor ui draws over the scene
+    graph_.add_pass(editor::make_editor_pass(h_backbuffer));
+#endif
     graph_.add_pass(std::make_unique<passes::present_pass>(h_backbuffer));
 
     const setup_context sc
@@ -900,5 +934,71 @@ bool cots::graphics::render::acquire_snapshot()
         return false;   //~ nothing new - caller redraws render_idx_
 
     snapshots_.render_idx = pending;
+    return true;
+}
+
+void cots::graphics::render::enqueue_editor_command(std::function<void()> fn)
+{
+    if (!fn) return;
+    std::lock_guard lock(command_mutex_);
+    pending_editor_commands_.push_back(std::move(fn));
+}
+
+std::uint32_t cots::graphics::render::runtime_load_mesh(
+    const std::string& path, const std::string& label)
+{
+    meshes::imported_model im{};
+    if (not mesh_cache_.get_or_bake(path, im) || not im.valid())
+    {
+        spdlog::warn("[render] runtime mesh '{}' load failed", path);
+        return ~0u;
+    }
+
+    const std::uint64_t flush = fence_.signal(device_.graphics_queue());
+    if (not fence_.wait(flush))
+    {
+        spdlog::warn("[render] gpu flush before runtime mesh load failed");
+    }
+
+    const auto id = mesh_registry_.create_from_imported(
+        im, label.empty() ? "runtime_mesh" : label.c_str());
+    if (id == meshes::invalid_mesh)
+    {
+        spdlog::warn("[render] runtime mesh '{}' registration failed", path);
+        return ~0u;
+    }
+
+    if (not build_passes())
+    {
+        spdlog::warn("[render] graph rebuild after runtime mesh load failed");
+    }
+    frame_.fence_values.fill(flush);
+    frame_.index = 0u;
+    return id;
+}
+
+bool cots::graphics::render::runtime_load_texture(const std::string& path)
+{
+    utils::decoded_image img{};
+    if (not utils::decode_image_file(path, img) || not img.valid())
+    {
+        return false;
+    }
+
+    hardware::texture_create_info ti{};
+    ti.width      = img.width;
+    ti.height     = img.height;
+    ti.format     = hardware::texture_format::rgba8_unorm_srgb;
+    ti.pixels     = img.pixels.data();
+    ti.row_pitch  = img.row_pitch();
+    ti.debug_name = "runtime_texture";
+
+    const auto h = textures_.create(ti);
+    if (not h.valid())
+    {
+        return false;
+    }
+    spdlog::info("[render] runtime texture '{}' in bindless slot {}",
+                 path, textures_.bindless_slot(h));
     return true;
 }

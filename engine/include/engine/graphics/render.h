@@ -9,6 +9,8 @@
 #include <chrono>
 #include <atomic>
 #include <memory>
+#include <functional>
+#include <string>
 #include <d3d12.h>
 #include <dxgi1_6.h>
 
@@ -60,7 +62,7 @@ namespace cots::graphics
         void begin_update(float dt) override;
         void end_update() override;
 
-        // called by render_services(MT) installer during host update
+        // called by MT installer during host update
         [[nodiscard]] scene_snapshot& building_snapshot() noexcept;
 
         //~ for editor later
@@ -73,6 +75,14 @@ namespace cots::graphics
         {
             return buffers_;
         }
+
+        //~ editor command channel render thread drains it
+        void enqueue_editor_command(std::function<void()> fn);
+
+        //~ runtime asset loads
+        std::uint32_t runtime_load_mesh   (const std::string& path,
+                                           const std::string& label);
+        bool          runtime_load_texture(const std::string& path);
 
         //~ for tests only
               hardware::swapchain& swapchain() noexcept;
@@ -187,6 +197,9 @@ namespace cots::graphics
                   || texture_toggle_bake || texture_clear_cache;
             }
         } pending_{};
+
+        //~ editor command queue lives next to pending
+        std::vector<std::function<void()>> pending_editor_commands_{};
 
         //~ triple buffered snapshots (TODO: profile this sht)
         static constexpr std::uint32_t invalid_idx = ~0u;
