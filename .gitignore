@@ -1,23 +1,35 @@
+# Build output
 /build/
 /out/
-*.user
-*.suo
-.vs/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 
-/external/AgilitySDK/
-/external/DXC/
-/external/WinPixEventRuntime/
-/external/FMOD/
+# Visual Studio
+*.user
+*.suo
+.vs/
+*.pdb
+*.ilk
+*.exp
 
 # IDE
 .idea/
 .vscode/
 *.swp
 
-# Misc
-*.pdb
-*.ilk
-*.exp
+# External SDKs
+/external/AgilitySDK/
+/external/DXC/
+/external/WinPixEventRuntime/
+/external/FMOD/
+
+# Vendor dependencies
+/vendor/
+
+# Runtime/downloaded assets
+/assets/*
+!/assets/shaders/
+!/assets/shaders/**/
+!/assets/shaders/**/*.hlsl
+!/assets/shaders/**/*.hlsli
