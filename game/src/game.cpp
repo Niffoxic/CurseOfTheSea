@@ -4,6 +4,7 @@
 #include "player.h"
 #include "audio_test.h"
 #include "debug_input.h"
+#include "editor_demo.h"
 
 namespace
 {
@@ -51,6 +52,7 @@ namespace
         game::player_update     (*gs, dt);
         game::audio_test_update (*gs, dt);
         game::debug_input_update(*gs);
+        game::editor_demo_update(*gs);
     }
 }
 
