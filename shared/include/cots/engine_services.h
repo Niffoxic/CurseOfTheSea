@@ -168,6 +168,29 @@ namespace cots::module
         void (*submit_instance)(int mesh_id, const float world[16], int material_id);
     }; // render services
 
+    //~ editor services
+    struct editor_services
+    {
+        //~ availability
+        bool (*enabled)();
+
+        //~ window scoping
+        bool (*begin_window)(const char* name);
+        void (*end_window)  ();
+
+        //~ widgets
+        void (*text)        (const char* msg);
+        bool (*button)      (const char* label);
+        bool (*checkbox)    (const char* label, bool*  value);
+        bool (*slider_float)(const char* label, float* value, float min, float max);
+        bool (*slider_int)  (const char* label, int*   value, int   min, int   max);
+        void (*separator)   ();
+
+        //~ optional widgets
+        bool (*combo)       (const char* label, int* current, const char* const* items, int count);
+        bool (*color_edit3) (const char* label, float color[3]);
+    }; // editor services
+
     //~ master
     struct services
     {
@@ -177,6 +200,7 @@ namespace cots::module
         time_services   time;
         audio_services  audio;
         render_services render;
+        editor_services editor;
     };
 
 } // namespace cots::module
