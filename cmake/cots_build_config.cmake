@@ -25,6 +25,9 @@ option(COTS_USE_TRACY "Enable Tracy profiler integration" ON)
 option(COTS_TEXTURES_USE_BAKED_IN_DEBUG
         "Force the baked texture path even in Debug builds" OFF)
 
+# in-engine ImGui editor as a static lib linked into engine
+option(COTS_USE_EDITOR "Enable in-engine ImGui editor (editor.lib)" ON)
+
 set(COTS_PROFILER_LEVEL "0" CACHE STRING
         "Profiler verbosity: 0=off, 1=coarse, 2=medium, 3=verbose")
 set_property(CACHE COTS_PROFILER_LEVEL PROPERTY STRINGS "0" "1" "2" "3")
@@ -40,6 +43,7 @@ function(cots_apply_compile_flags target)
             # Feature flags
             $<$<BOOL:${COTS_USE_TRACY}>:COTS_TRACY_ENABLED=1>
             $<$<BOOL:${COTS_TEXTURES_USE_BAKED_IN_DEBUG}>:COTS_TEXTURES_USE_BAKED_IN_DEBUG=1>
+            $<$<BOOL:${COTS_USE_EDITOR}>:COTS_EDITOR_ENABLED=1>
             COTS_PROFILER_LEVEL=${COTS_PROFILER_LEVEL}
     )
 endfunction()

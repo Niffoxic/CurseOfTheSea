@@ -16,6 +16,9 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 find_package(FMOD REQUIRED)
 
 add_subdirectory(shared)
+if(COTS_USE_EDITOR)
+    add_subdirectory(editor)
+endif()
 add_subdirectory(engine)
 add_subdirectory(game)
 
