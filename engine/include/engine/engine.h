@@ -1,27 +1,25 @@
-// Created by Niffoxic (Harsh Dubey)
+//=============================================================================
+// Curse of the Sea
+//=============================================================================
+// Created by  Niffoxic - Harsh Dubey
+// Module      WM9M6 Fundamentals of Games Research Development and Management
+// Institution University of Warwick
+//
+// A linear story driven pirate adventure built from scratch in C++23 and
+// DirectX 12 for the University of Warwick game project assessment.
+//=============================================================================
 #ifndef CURSEOFTHESEA_engine_H
 #define CURSEOFTHESEA_engine_H
 
 #include <memory>
 
-#include "audio/audio_handle.h"
-#include "core/engine_config.h"
-#include "core/framework/interface/subsystem.h"
-#include "core/framework/interface/tickable.h"
-#include "core/framework/dependency_builder.h"
-
-namespace cots::events
-{
-    struct engine_hit_space {};
-}
-
 namespace cots
 {
-    namespace platform { class windows;     }
-    namespace utils    { class timer;       }
-    namespace events   { class dispatcher;  }
-    namespace audio    { class system;      }
-    namespace graphics { class render;      }
+    struct fps_stats
+    {
+        std::uint32_t main_thread  {};
+        std::uint32_t render_thread{};
+    };
 
     class engine
     {
@@ -29,33 +27,27 @@ namespace cots
          engine();
         ~engine();
 
-        [[nodiscard]] bool init();
-                      void tick();
+        engine(const engine&) = delete;
+        engine(engine &&)     = delete;
+
+        engine &operator=(const engine &) = delete;
+        engine &operator=(engine &&)      = delete;
+
+        [[nodiscard]]
+        bool initialize() const;
+        void update    ();
 
         [[nodiscard]] bool  should_close() const noexcept;
         [[nodiscard]] float delta_time  () const noexcept;
 
+        [[nodiscard]] fps_stats get_fps_stats() const noexcept;
+
+        //~ fps setters
+        void set_target_fps(std::uint32_t target_fps) const;
     private:
-        void initialize_features();
-        void regulate_subsystems();
-        void regulate_tickable  ();
-
-        //~ processes
-        void update_tickable();
-
-        //~ tests
-        void test_debug_input() const;
-        void test_fps        () const;
-    private:
-        config::manager config_manager_{};
-
-        std::shared_ptr<utils::timer>      timer_  { nullptr };
-        std::shared_ptr<platform::windows> windows_{ nullptr };
-        std::shared_ptr<graphics::render>  render_ { nullptr };
-
-        utils::dependency_scheduler<interfaces::subsystem> subsystem_scheduler_;
-        utils::dependency_scheduler<interfaces::tickable>  tickable_scheduler_;
+        class implementation;
+        std::unique_ptr<implementation> impl_;
     };
-}
+} // namespace cots
 
 #endif //CURSEOFTHESEA_engine_H

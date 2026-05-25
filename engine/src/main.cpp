@@ -22,7 +22,7 @@ int main()
     timeBeginPeriod(1);
     cots::engine engine{};
 
-    if (not engine.init())
+    if (not engine.initialize())
     {
         spdlog::error("Failed to initialize engine");
         return 1;
@@ -50,10 +50,9 @@ int main()
             host.poll_for_reload();
         }
 #endif
-        engine.tick();
+        engine.update();
         host.update(engine.delta_time());
     }
-
     spdlog::info("engine: shutting down");
     host.deinitialize();
     timeEndPeriod(1);

@@ -1,6 +1,5 @@
 // Created by Niffoxic (Harsh Dubey)
 #include "engine/engine.h"
-#include <spdlog/spdlog.h>
 
 #include <ranges>
 
@@ -9,6 +8,7 @@
 #include "engine/system/define_features.h"
 #include "engine/platform/platform_windows.h"
 #include "engine/graphics/render.h"
+#include "engine/core/framework/dependency_builder.h"
 
 #define REGISTER_FEATURE_TO_SCHEDULER(scheduler, feature_class) \
 do { \
@@ -16,176 +16,251 @@ auto _cots_feat = ::cots::feature::locator::resolve<feature_class>(); \
 (scheduler).register_type(std::ref(_cots_feat)); \
 } while(0)
 
+using namespace cots;
 
-cots::engine::engine() = default;
-
-cots::engine::~engine()
+class engine::implementation
 {
-    for (const auto subsystem: std::views::reverse(subsystem_scheduler_))
-    {
-        if (subsystem) subsystem->deinitialize();
-    }
+public:
+     implementation() = default;
+    ~implementation();
+
+    implementation(const implementation&) = delete;
+    implementation(implementation&&)      = delete;
+
+    implementation& operator=(const implementation&) = delete;
+    implementation& operator=(implementation&&)      = delete;
+
+    //~ life time operations
+    bool  initialize  ();
+    void  deinitialize();
+    void  update      ();
+    bool  should_close() const;
+    float delta_time  () const;
+
+    fps_stats get_fps_stats() const noexcept;
+
+    void set_target_fps(std::uint32_t target_fps) const;
+
+private:
+    void initialize_subsystems();
+    bool configure_subsystems ();
+    void configure_tickables  ();
+    void update_tickables     ();
+
+    //~ debugging stuff
+    void compute_fps();
+    void display_fps();
+
+private:
+    config::manager config_manager_{};
+
+    std::shared_ptr<utils::timer>      timer_  { nullptr };
+    std::shared_ptr<platform::windows> windows_{ nullptr };
+    std::shared_ptr<graphics::render>  render_ { nullptr };
+
+    utils::dependency_scheduler<interfaces::subsystem> subsystem_;
+    utils::dependency_scheduler<interfaces::tickable>  tickables_;
+
+    //~ debug infos
+    fps_stats fps_stats_{};
+};
+
+#pragma region ENGINE_MAIN
+engine::engine()
+: impl_(std::make_unique<engine::implementation>())
+{}
+
+engine::~engine()
+{
+    impl_->deinitialize();
 }
 
-bool cots::engine::init()
-{
-    initialize_features();
-    regulate_subsystems();
-    regulate_tickable  ();
 
-    //~ defaults
+bool engine::initialize() const
+{
+    return impl_->initialize();
+}
+
+void engine::update()
+{
+    impl_->update();
+}
+
+bool engine::should_close() const noexcept
+{
+    return impl_->should_close();
+}
+
+float engine::delta_time() const noexcept
+{
+    return impl_->delta_time();
+}
+
+fps_stats engine::get_fps_stats() const noexcept
+{
+    return impl_->get_fps_stats();
+}
+
+void engine::set_target_fps(const std::uint32_t target_fps) const
+{
+    impl_->set_target_fps(target_fps);
+}
+#pragma endregion //~ Engine Main
+
+#pragma region ENGINE_IMPLEMENTATION
+
+engine::implementation::~implementation()
+{
+    deinitialize();
+}
+
+bool engine::implementation::initialize()
+{
+    initialize_subsystems();
+
+    if (not configure_subsystems()) return false;
+    configure_tickables  ();
+
+    //~ reset timer states
     timer_->reset();
-    timer_->set_target_frame_ps(360);
+    timer_->set_target_frame_ps(config::DEFAULT_ENGINE_FPS);
 
     return true;
 }
 
-void cots::engine::tick()
+void engine::implementation::deinitialize()
 {
-    timer_->step();
-    test_fps();
-    test_debug_input();
-    update_tickable();
+    //~ deinitialize all subsystems
+    for (const auto system: std::views::reverse(subsystem_))
+    {
+        if (system)
+        {
+            system->deinitialize();
+        }
+    }
 }
 
-bool cots::engine::should_close() const noexcept
+void engine::implementation::update()
+{
+    timer_->step();
+
+    update_tickables();
+    compute_fps     ();
+}
+
+bool engine::implementation::should_close() const
 {
     return windows_->should_close();
 }
 
-float cots::engine::delta_time() const noexcept
+float engine::implementation::delta_time() const
 {
     return timer_->delta_time();
 }
 
-void cots::engine::initialize_features()
+fps_stats engine::implementation::get_fps_stats() const noexcept
+{
+    return fps_stats_;
+}
+
+void engine::implementation::set_target_fps(const std::uint32_t target_fps) const
+{
+    timer_->set_target_frame_ps(target_fps);
+}
+
+void engine::implementation::initialize_subsystems()
 {
     timer_      = feature::locator::resolve<utils::timer>();
+    windows_    = feature::locator::resolve<platform::windows>();
 
     //~ setup subsystems
-    windows_ = feature::locator::resolve<platform::windows>();
     windows_->setup_config(reinterpret_cast<const std::byte*>(&config_manager_.windows_config()));
 }
 
-void cots::engine::regulate_subsystems()
+bool engine::implementation::configure_subsystems()
 {
-    REGISTER_FEATURE_TO_SCHEDULER(subsystem_scheduler_, audio::system);
+    //~ register subsystems
+    REGISTER_FEATURE_TO_SCHEDULER(subsystem_, audio::system);
+    subsystem_.register_type(std::ref(windows_));
 
-    subsystem_scheduler_.register_type(std::ref(windows_));
+    render_  = feature::locator::resolve<graphics::render>();
+    subsystem_.register_type(std::ref(render_));
 
-    auto render  = feature::locator::resolve<graphics::render>();
-    subsystem_scheduler_.register_type(std::ref(render));
+    //~ TODO: Add Physics Subsystem - should depend on renderer
 
     //~ configure dependencies
-    subsystem_scheduler_.add_dependency(render, windows_);
+    subsystem_.add_dependency(render_, windows_);
 
-    for (const auto subsystem: subsystem_scheduler_)
+    //~ initialize systems
+    for (auto* system: subsystem_)
     {
-        if (not subsystem->initialize())
+        if (not system || !system->initialize())
         {
-            spdlog::error("Failed to initialize subsystem");
-            COTS_FAIL_MSG("Failed to initialize subsystem");
+            //~ TODO: Add Logging
+            return false;
         }
     }
-    spdlog::info("All Subsystem initialized");
+    return true;
 }
 
-void cots::engine::regulate_tickable()
+void engine::implementation::configure_tickables()
 {
-    REGISTER_FEATURE_TO_SCHEDULER(tickable_scheduler_, audio::system);
-    REGISTER_FEATURE_TO_SCHEDULER(tickable_scheduler_, events::dispatcher);
+    //~ register
+    REGISTER_FEATURE_TO_SCHEDULER(tickables_, audio::system);
+    REGISTER_FEATURE_TO_SCHEDULER(tickables_, events::dispatcher);
 
-    render_ = feature::locator::resolve<graphics::render>();
+    tickables_.register_type(std::ref(windows_));
+    tickables_.register_type(std::ref(render_));
 
-    tickable_scheduler_.register_type(std::ref(windows_));
-    tickable_scheduler_.register_type(std::ref(render_));
-
-    //~ dependencies
-    tickable_scheduler_.add_dependency(render_, windows_);
+    //~ configure dependencies
+    tickables_.add_dependency(render_,  windows_);
 }
 
-void cots::engine::update_tickable()
+void engine::implementation::update_tickables()
 {
     const float dt = timer_->delta_time();
 
-    //~ update begin
-    for (const auto tickable: tickable_scheduler_)
-    {
-        if (tickable)
-        {
-            tickable->begin_update(dt);
-        }
-    }
+    //~ begin from parent to child
+    for (const auto tickable: tickables_)
+        if (tickable) tickable->begin_update(dt);
 
-    //~ update end
-    for (const auto iter : std::views::reverse(tickable_scheduler_))
-    {
-        if (iter)
-        {
-            iter->end_update();
-        }
-    }
+    //~ end from child to parent
+    for (const auto iter : std::views::reverse(tickables_))
+        iter->end_update();
+
 }
-
-void cots::engine::test_debug_input() const
+void engine::implementation::compute_fps()
 {
-    const auto& kb = windows_->keyboard;
-    const auto dispatcher = feature::locator::resolve<events::dispatcher>();
-
-    using mode = graphics::hardware::display_mode;
-    namespace req = events::swapchain;
-
-    // toggle borderless <-> windowed
-    if (kb.pressed(VK_F11))
-    {
-        const auto cur = render_->swapchain().current_mode();
-        dispatcher->enqueue<req::set_display_mode>(
-            cur == mode::windowed ? mode::borderless : mode::windowed);
-    }
-
-    if (kb.pressed(VK_F10)) dispatcher->enqueue<req::set_display_mode>(mode::exclusive_fullscreen);
-    if (kb.pressed(VK_F9))  dispatcher->enqueue<req::set_display_mode>(mode::windowed);
-
-    if (kb.pressed('1')) dispatcher->enqueue<req::set_windowed_size>(1280u, 720u);
-    if (kb.pressed('2')) dispatcher->enqueue<req::set_windowed_size>(1600u, 900u);
-    if (kb.pressed('3')) dispatcher->enqueue<req::set_windowed_size>(1920u, 1080u);
-
-    //~ shader event tests
-    namespace sh = events::shader;
-    if (kb.pressed(VK_F5)) dispatcher->enqueue<sh::reload>(std::uint64_t{0});
-    if (kb.pressed(VK_F6)) dispatcher->enqueue<sh::save>();
-    if (kb.pressed(VK_F7)) dispatcher->enqueue<sh::clear>();
-
-    //~ texture bake event tests
-    namespace tx = events::texture;
-    if (kb.pressed(VK_F8))      dispatcher->enqueue<tx::toggle_bake_path>();
-    if (kb.pressed(VK_OEM_3))   dispatcher->enqueue<tx::clear_bake_cache>();
-}
-
-void cots::engine::test_fps() const
-{
-    using clock = std::chrono::steady_clock;
-
-    static auto window_start = clock::now();
-    static int  mt_frames    = 0;
+    static auto window_start = utils::timer::now();
+    static std::uint32_t mt_frames = 0;
     ++mt_frames;
 
-    const auto  now = clock::now();
+    const auto  now = utils::timer::now();
     const float elapsed = std::chrono::duration<float>(now - window_start).count();
 
     if (elapsed >= 0.5f)
     {
-        const float mt_fps = static_cast<float>(mt_frames) / elapsed;
-        const float mt_ms  = (elapsed * 1000.f) / static_cast<float>(mt_frames);
+        fps_stats_.main_thread   = static_cast<float>(mt_frames) / elapsed;
+        fps_stats_.render_thread = render_->fps();
 
-        const float rt_fps = render_->fps();
-        const float rt_ms  = render_->frame_ms();
+        window_start = now;
+        mt_frames    = 0;
 
-        windows_->set_debug(std::format(
-            "MT {:.0f} fps ({:.2f} ms)  |  RT {:.0f} fps ({:.2f} ms)",
-            mt_fps, mt_ms, rt_fps, rt_ms));
+#if COTS_DEBUG || COTS_RELEASE //~ fps displays on title bar
+        display_fps();
+#endif
 
         window_start = now;
         mt_frames    = 0;
     }
 }
+
+void engine::implementation::display_fps()
+{
+    windows_->set_debug(std::format(
+        "MT {} fps | RT {} fps",
+        fps_stats_.main_thread, fps_stats_.render_thread)
+    );
+}
+
+#pragma endregion // Engine Implementation

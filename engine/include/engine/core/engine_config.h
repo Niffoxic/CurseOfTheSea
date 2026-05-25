@@ -6,6 +6,9 @@
 
 namespace cots::config
 {
+    inline static constexpr std::uint32_t SWAPCHAIN_BUFFER_COUNT = 2u;
+    inline static constexpr std::uint32_t DEFAULT_ENGINE_FPS     = 360;
+
     //~ general
     template<typename T>
     requires std::is_arithmetic_v<T>
@@ -50,6 +53,6 @@ namespace cots::config
     private:
         windows windows_{};
     };
-} // namespace
+} // namespace cots::config
 
 #endif //CURSEOFTHESEA_ENGINE_CONFIG_H

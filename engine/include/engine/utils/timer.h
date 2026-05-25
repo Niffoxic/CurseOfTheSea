@@ -38,6 +38,20 @@ namespace cots::utils
 
         [[nodiscard]] static std::string current_date() noexcept;
 
+        //~ helpers
+        [[nodiscard]]
+        static Time now() noexcept
+        {
+            return clock::now();
+        }
+
+        [[nodiscard]]
+        static float elapsed_from(const Time& start)
+        {
+            const auto _now = now();
+            return std::chrono::duration<float>(_now - start).count();
+        }
+
     private:
         static constexpr float default_fps = 60.f;
         Time start_time_   {};
