@@ -4,19 +4,24 @@
 
 #include <array>
 #include <cstdint>
-#include <wrl/client.h>
-#include <windows.h>
-
-#include "types.h"
 #include "device.h"
 
 struct IDXGISwapChain4;
 struct IDXGIOutput6;
 struct ID3D12Resource2;
-struct ID3D12DescriptorHeap;
 
 namespace cots::graphics::hardware
 {
+    //~ present outcome the render loop branches on this to detect device
+    // removed and to skip rendering while occluded
+    enum class present_result : std::uint8_t
+    {
+        success,
+        occluded,
+        device_removed,
+        failed,
+    };
+
     struct swapchain_create_info
     {
         HWND           window_handle { nullptr };
@@ -33,7 +38,7 @@ namespace cots::graphics::hardware
     class swapchain final
     {
     public:
-         swapchain() = default;
+         swapchain();
         ~swapchain();
 
         swapchain(const swapchain&) = delete;
@@ -48,7 +53,7 @@ namespace cots::graphics::hardware
         //~ fast path - just resize backbuffers, keep mode & format
         [[nodiscard]] bool resize(const device& dev, std::uint32_t width, std::uint32_t height);
 
-        //~ full recreate - new params, full teardown
+        //~ full recreate - new params full teardown
         [[nodiscard]] bool recreate(const device& dev, const swapchain_create_info& info);
 
         //~ mode transitions
@@ -57,64 +62,27 @@ namespace cots::graphics::hardware
                                                   const display_format& format);
         [[nodiscard]] bool set_windowed_size     (const device& dev, std::uint32_t width, std::uint32_t height);
 
-        //~ per-frame
-        bool present(std::uint32_t sync_interval = 0);
+        present_result present(std::uint32_t sync_interval = 0);
 
-        //~ occlusion - call once per frame at start.
-        //  returns true if rendering should proceed, false if occluded
+        //~ occlusion - call once per frame at start
         [[nodiscard]] bool check_occlusion();
 
         //~ accessors
-        [[nodiscard]] std::uint32_t      current_backbuffer_index() const;
-        [[nodiscard]] ID3D12Resource2*   current_backbuffer      () const;
-        [[nodiscard]] std::size_t        current_rtv_handle      () const;
+        [[nodiscard]] std::uint32_t     current_backbuffer_index() const;
+        [[nodiscard]] ID3D12Resource2*  current_backbuffer      () const;
+        [[nodiscard]] std::size_t       current_rtv_handle      () const;
 
-        [[nodiscard]] std::uint32_t      width () const noexcept { return width_; }
-        [[nodiscard]] std::uint32_t      height() const noexcept { return height_; }
-        [[nodiscard]] display_mode       current_mode  () const noexcept { return current_mode_; }
-        [[nodiscard]] const display_format& current_format() const noexcept { return current_format_; }
-        [[nodiscard]] std::uint32_t      current_output_index() const noexcept { return current_output_index_; }
-        [[nodiscard]] bool               is_occluded() const noexcept { return is_occluded_; }
-        [[nodiscard]] bool               tearing_supported() const noexcept { return tearing_supported_; }
-
-        [[nodiscard]] IDXGISwapChain4*   dxgi_swapchain() const noexcept;
-
+        [[nodiscard]] std::uint32_t         width               () const noexcept;
+        [[nodiscard]] std::uint32_t         height              () const noexcept;
+        [[nodiscard]] display_mode          current_mode        () const noexcept;
+        [[nodiscard]] const display_format& current_format      () const noexcept;
+        [[nodiscard]] std::uint32_t         current_output_index() const noexcept;
+        [[nodiscard]] bool                  is_occluded         () const noexcept;
+        [[nodiscard]] bool                  tearing_supported   () const noexcept;
+        [[nodiscard]] IDXGISwapChain4*      dxgi_swapchain      () const noexcept;
     private:
-        bool create_swapchain   (const device& dev, const swapchain_create_info& info);
-        bool create_backbuffer_views(const device& dev);
-        void release_backbuffers() noexcept;
-
-        bool apply_borderless   (const device& dev, const swapchain_create_info& info);
-        bool apply_exclusive    (const device& dev, const swapchain_create_info& info);
-        bool apply_windowed     (const device& dev, const swapchain_create_info& info);
-
-        bool find_output        (const device& dev, std::uint32_t index,
-                                 Microsoft::WRL::ComPtr<IDXGIOutput6>& out) const;
-
-        static display_format pick_closest_mode(const output_info& out,
-                                                const display_format& requested);
-
-    private:
-        Microsoft::WRL::ComPtr<IDXGISwapChain4>      swapchain_;
-        Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtv_heap_;
-        std::array<Microsoft::WRL::ComPtr<ID3D12Resource2>, 8> backbuffers_;  //~ up to 8 buffers xD
-
-        HWND          window_handle_       { nullptr };
-        std::uint32_t width_               { 1 };
-        std::uint32_t height_              { 1 };
-        std::uint32_t frame_count_         { 3 };
-        std::uint32_t rtv_descriptor_size_ { 0 };
-        std::uint32_t current_output_index_{ 0 };
-
-        display_mode   current_mode_       { display_mode::windowed };
-        display_format current_format_     {};
-
-        //~ remember windowed state for restore
-        RECT          windowed_rect_       {};
-        LONG_PTR      windowed_style_      { 0 };
-
-        bool          tearing_supported_   { false };
-        bool          is_occluded_         { false };
+        class implementation;
+        std::unique_ptr<implementation> impl_;
     };
 } // namespace cots::graphics::hardware
 
