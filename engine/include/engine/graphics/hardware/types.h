@@ -61,7 +61,6 @@ namespace cots::graphics::hardware
         borderless           = 1,
         exclusive_fullscreen = 2,
     };
-
 } // namespace cots::graphics::hardware
 
 #endif //CURSEOFTHESEA_TYPES_H

@@ -6,17 +6,23 @@
 
 #include <cots/engine_services.h>
 #include <cots/cots_config.h>
-#include <spdlog/spdlog.h>
 
+#include "engine/utils/logger.h"
 #include "engine/audio/audio_system.h"
 #include "engine/graphics/render.h"
 #include "engine/system/feature_locator.h"
 #include <timeapi.h>
 
-int main()
+int WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
 {
+    UNREFERENCED_PARAMETER(hInstance);
+
 #if defined(COTS_DEBUG_RUNTIME)
     cots::init_debug_runtime();
+#endif
+
+#if defined(COTS_DEBUG) || defined(COTS_RELWITHDEBINFO)
+    cots::utils::logger::instance().initialize();
 #endif
 
     timeBeginPeriod(1);
@@ -54,6 +60,12 @@ int main()
         host.update(engine.delta_time());
     }
     spdlog::info("engine: shutting down");
+
+
+#if defined(COTS_DEBUG) || defined(COTS_RELWITHDEBINFO)
+    cots::utils::logger::instance().deinitialize();
+#endif
+
     host.deinitialize();
     engine.deinitialize();
     timeEndPeriod(1);

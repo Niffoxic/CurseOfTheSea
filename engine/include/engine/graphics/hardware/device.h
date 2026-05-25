@@ -2,6 +2,7 @@
 #define CURSEOFTHESEA_DEVICE_H
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 #include <wrl/client.h>
@@ -85,54 +86,36 @@ namespace cots::graphics::hardware
         device& operator=(const device&) = delete;
         device& operator=(device&&)      = delete;
 
-        [[nodiscard]] bool initialize  (const device_create_info& info = {});
-                      void deinitialize() noexcept;
+        [[nodiscard]] bool initialize  (const device_create_info& info = {}) const;
+                      void deinitialize() const noexcept;
 
-        [[nodiscard]] bool recreate(const device_create_info& info);
-        [[nodiscard]] bool recreate();   //~ uses last info
+        [[nodiscard]] bool recreate(const device_create_info& info) const;
+        [[nodiscard]] bool recreate() const;   //~ uses last info
 
         [[nodiscard]] bool check_device_removed() const;
-                      void refresh_adapters    ();
+                      void refresh_adapters    () const;
+
+        // on device remove dump DRED breadcrumps
+        void dump_device_removed() const;
 
         [[nodiscard]] ID3D12Device14*     d3d12_device  () const noexcept;
         [[nodiscard]] IDXGIFactory7*      dxgi_factory  () const noexcept;
         [[nodiscard]] ID3D12CommandQueue* graphics_queue() const noexcept;
+        [[nodiscard]] ID3D12CommandQueue* compute_queue () const noexcept;
+        [[nodiscard]] ID3D12CommandQueue* copy_queue    () const noexcept;
         [[nodiscard]] D3D12MA::Allocator* allocator     () const noexcept;
 
         [[nodiscard]] const adapter_info&              current_adapter_info() const noexcept;
         [[nodiscard]] const std::vector<adapter_info>& adapters_info       () const noexcept;
         [[nodiscard]] bool                             is_initialized      () const noexcept;
 
-        [[nodiscard]] const std::vector<output_info>& outputs() const noexcept
-        {
-            return outputs_info_;
-        }
-        void refresh_outputs();
+        [[nodiscard]]
+        const std::vector<output_info>& outputs() const noexcept;
+        void refresh_outputs() const;
 
     private:
-        bool create_internal (const device_create_info& info);
-        bool pick_adapter    (const device_create_info& info,
-                              Microsoft::WRL::ComPtr<IDXGIAdapter4>& out) const;
-
-        void destroy_internal  () noexcept;
-        void enumerate_adapters();
-        void enumerate_outputs ();
-
-    private:
-        Microsoft::WRL::ComPtr<IDXGIFactory7>      factory_;
-        Microsoft::WRL::ComPtr<IDXGIAdapter4>      adapter_;
-        Microsoft::WRL::ComPtr<ID3D12Device14>     device_;
-        Microsoft::WRL::ComPtr<ID3D12CommandQueue> graphics_queue_;
-        Microsoft::WRL::ComPtr<ID3D12InfoQueue1>   info_queue_;
-
-        D3D12MA::Allocator*       allocator_ { nullptr };
-        std::vector<adapter_info> adapters_info_;
-        std::vector<output_info>  outputs_info_;
-
-        adapter_info       adapter_info_{};
-        device_create_info last_info_   {};
-
-        bool initialized_ { false };
+        class implementation;
+        std::unique_ptr<implementation> impl_;
     };
 }
 

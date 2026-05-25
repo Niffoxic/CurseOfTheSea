@@ -27,6 +27,7 @@ option(COTS_TEXTURES_USE_BAKED_IN_DEBUG
 
 # in-engine ImGui editor as a static lib linked into engine
 option(COTS_USE_EDITOR "Enable in-engine ImGui editor (editor.lib)" ON)
+option(COTS_GPU_VALIDATION "GPU Based validation catches descriptor heap and resource state issues" ON)
 
 set(COTS_PROFILER_LEVEL "0" CACHE STRING
         "Profiler verbosity: 0=off, 1=coarse, 2=medium, 3=verbose")
@@ -38,12 +39,14 @@ function(cots_apply_compile_flags target)
             # Build config
             $<$<CONFIG:Debug>:COTS_DEBUG=1>
             $<$<CONFIG:Release>:COTS_RELEASE=1>
+            $<$<CONFIG:RelWithDebInfo>:COTS_RELWITHDEBINFO=1>
             $<$<CONFIG:Production>:COTS_PRODUCTION=1>
 
             # Feature flags
             $<$<BOOL:${COTS_USE_TRACY}>:COTS_TRACY_ENABLED=1>
             $<$<BOOL:${COTS_TEXTURES_USE_BAKED_IN_DEBUG}>:COTS_TEXTURES_USE_BAKED_IN_DEBUG=1>
             $<$<BOOL:${COTS_USE_EDITOR}>:COTS_EDITOR_ENABLED=1>
+            $<$<BOOL:${COTS_GPU_VALIDATION}>:COTS_GPU_VALIDATION_ENABLED=1>
             COTS_PROFILER_LEVEL=${COTS_PROFILER_LEVEL}
     )
 endfunction()

@@ -4,6 +4,11 @@
 
 #include <cstdint>
 
+//~ device dump information
+#ifndef COTS_DRED_ENABLED
+    #define COTS_DRED_ENABLED (!COTS_PRODUCTION)
+#endif
+
 //~ Build Kinds
 #ifndef COTS_DEBUG
     #define COTS_DEBUG 0

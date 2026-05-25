@@ -1,4 +1,4 @@
-add_executable(engine
+add_executable(engine WIN32
         src/main.cpp
         src/engine.cpp
         src/utils/timer.cpp
