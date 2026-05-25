@@ -46,6 +46,7 @@ add_executable(engine
         src/graphics/meshes/gltf_importer.cpp
         src/graphics/meshes/mesh_baker.cpp
         src/graphics/meshes/mesh_cache.cpp
+        src/services/engine_services.cpp
 )
 
 cots_apply_compile_flags(engine)

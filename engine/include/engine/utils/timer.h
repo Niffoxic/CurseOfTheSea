@@ -1,4 +1,13 @@
-// Created by Niffoxic (Harsh Dubey)
+//=============================================================================
+// Curse of the Sea
+//=============================================================================
+// Created by  Niffoxic - Harsh Dubey
+// Module      WM9M6 Fundamentals of Games Research Development and Management
+// Institution University of Warwick
+//
+// A linear story driven pirate adventure built from scratch in C++23 and
+// DirectX 12 for the University of Warwick game project assessment.
+//=============================================================================
 #ifndef CURSEOFTHESEA_TIMER_H
 #define CURSEOFTHESEA_TIMER_H
 
@@ -27,7 +36,7 @@ namespace cots::utils
         void resume() noexcept;
         void step  () noexcept;
 
-        void set_target_frame_ps(int target_frame_rate)   noexcept;
+        void set_target_frame_ps(int   target_frame_rate) noexcept;
         void set_target_frame_ms(float target_frame_rate) noexcept;
 
         [[nodiscard]] float delta_time     () const noexcept;
@@ -58,7 +67,7 @@ namespace cots::utils
         Time previous_time_{};
         ns   delta_time_   {};
 
-        bool paused_   { false };
+        bool paused_    { false };
         ns target_frame_{ ns(static_cast<long>(1'000'000'000.0f / default_fps))};
     };
 } // namespace cots::utils

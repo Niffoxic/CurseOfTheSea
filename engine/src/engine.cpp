@@ -72,16 +72,20 @@ engine::engine()
 
 engine::~engine()
 {
-    impl_->deinitialize();
+    deinitialize();
 }
-
 
 bool engine::initialize() const
 {
     return impl_->initialize();
 }
 
-void engine::update()
+void engine::deinitialize() const noexcept
+{
+    impl_->deinitialize();
+}
+
+void engine::update() const
 {
     impl_->update();
 }
@@ -133,10 +137,7 @@ void engine::implementation::deinitialize()
     //~ deinitialize all subsystems
     for (const auto system: std::views::reverse(subsystem_))
     {
-        if (system)
-        {
-            system->deinitialize();
-        }
+        if (system) system->deinitialize();
     }
 }
 

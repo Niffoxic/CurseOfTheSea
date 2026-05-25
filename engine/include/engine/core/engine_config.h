@@ -37,8 +37,8 @@ namespace cots::config
     struct windows
     {
         size<int>    window_size{};
-        std::wstring window_title{L"COTS Engine" };
-        std::wstring icon_path   {L"assets/icons/app.ico" };
+        std::wstring window_title{ L"COTS Engine" };
+        std::wstring icon_path   { L"assets/icons/app.ico" };
     };
 
     class manager

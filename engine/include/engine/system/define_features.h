@@ -8,6 +8,7 @@
 #include "engine/events/event_dispatcher.h"
 #include "engine/audio/audio_system.h"
 #include "engine/graphics/render.h"
+#include "engine/engine.h"
 
 namespace cots::utils
 {

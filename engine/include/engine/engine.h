@@ -12,6 +12,7 @@
 #define CURSEOFTHESEA_engine_H
 
 #include <memory>
+#include "core/framework/interface/singleton.h"
 
 namespace cots
 {
@@ -21,21 +22,16 @@ namespace cots
         std::uint32_t render_thread{};
     };
 
-    class engine
+    class engine final: public interfaces::singleton<engine>
     {
-    public:
+        COTS_SINGLETON(engine);
          engine();
         ~engine();
-
-        engine(const engine&) = delete;
-        engine(engine &&)     = delete;
-
-        engine &operator=(const engine &) = delete;
-        engine &operator=(engine &&)      = delete;
-
+    public:
         [[nodiscard]]
-        bool initialize() const;
-        void update    ();
+        bool initialize  () const;
+        void deinitialize() const noexcept;
+        void update      () const;
 
         [[nodiscard]] bool  should_close() const noexcept;
         [[nodiscard]] float delta_time  () const noexcept;
@@ -44,7 +40,7 @@ namespace cots
 
         //~ fps setters
         void set_target_fps(std::uint32_t target_fps) const;
-    private:
+     private:
         class implementation;
         std::unique_ptr<implementation> impl_;
     };

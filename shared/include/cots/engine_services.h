@@ -191,9 +191,17 @@ namespace cots::module
         bool (*color_edit3) (const char* label, float color[3]);
     }; // editor services
 
+    //~ engine services
+    struct engine_services
+    {
+        void (*get_fps_info)  (std::uint32_t& mt_fps, std::uint32_t& rt_fps);
+        void (*set_target_fps)(const std::uint32_t& mt_fps);
+    };
+
     //~ master
     struct services
     {
+        engine_services engine;
         log_services    log;
         window_services window;
         input_services  input;

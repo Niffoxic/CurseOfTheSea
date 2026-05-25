@@ -20,7 +20,7 @@ int main()
 #endif
 
     timeBeginPeriod(1);
-    cots::engine engine{};
+    auto& engine = cots::engine::instance();
 
     if (not engine.initialize())
     {
@@ -55,6 +55,7 @@ int main()
     }
     spdlog::info("engine: shutting down");
     host.deinitialize();
+    engine.deinitialize();
     timeEndPeriod(1);
     return 0;
 }
