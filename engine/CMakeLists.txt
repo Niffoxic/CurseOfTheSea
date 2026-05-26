@@ -47,6 +47,8 @@ add_executable(engine WIN32
         src/graphics/meshes/mesh_baker.cpp
         src/graphics/meshes/mesh_cache.cpp
         src/services/engine_services.cpp
+        src/graphics/hardware/upload_arena.cpp
+        src/graphics/hardware/deferred_releaser.cpp
 )
 
 cots_apply_compile_flags(engine)

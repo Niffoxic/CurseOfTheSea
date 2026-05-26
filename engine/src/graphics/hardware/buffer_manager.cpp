@@ -2,490 +2,678 @@
 #include "engine/graphics/hardware/buffer_manager.h"
 #include "engine/graphics/hardware/device.h"
 #include "engine/graphics/hardware/fence.h"
+#include "engine/graphics/hardware/deferred_releaser.h"
+#include "engine/graphics/hardware/upload_arena.h"
+#include "engine/utils/logger.h"
 
 #include "engine/utils/helpers.h"
 
 #include <d3d12.h>
 #include <D3D12MemAlloc.h>
-#include <spdlog/spdlog.h>
 
-namespace cots::graphics::hardware
+#include <cstring>
+#include <span>
+#include <vector>
+#include <cstdint>
+
+using namespace cots::graphics::hardware;
+
+namespace
 {
-    buffer_manager::~buffer_manager()
+    //~ upload end state
+    D3D12_RESOURCE_STATES end_state_for(const buffer_kind kind) noexcept
     {
-        deinitialize();
+        switch (kind)
+        {
+        case buffer_kind::index:
+            return D3D12_RESOURCE_STATE_INDEX_BUFFER;
+
+        case buffer_kind::skinning_source:
+            return D3D12_RESOURCE_STATE_COMMON;
+
+        default:
+            return D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+        }
     }
+}
 
-    bool buffer_manager::initialize(device& dev)
+class buffer_manager::implementation
+{
+public:
+     implementation() = default;
+    ~implementation();
+
+    implementation(const implementation&) = delete;
+    implementation(implementation&&)      = delete;
+
+    implementation& operator=(const implementation&) = delete;
+    implementation& operator=(implementation&&)      = delete;
+
+    [[nodiscard]] bool initialize  (device& dev);
+                  void deinitialize() noexcept;
+
+    void set_releaser    (deferred_releaser* releaser) noexcept;
+    void set_upload_arena(upload_arena* arena) noexcept;
+
+    [[nodiscard]] buffer_handle create(const buffer_create_info& info);
+
+    [[nodiscard]]
+    std::vector<buffer_handle> create_batch(std::span<const buffer_create_info> infos);
+
+    void destroy(buffer_handle handle);
+
+    [[nodiscard]] ID3D12Resource* resource   (buffer_handle handle) const;
+    [[nodiscard]] std::uint64_t   gpu_address(buffer_handle handle) const;
+    [[nodiscard]] std::uint64_t   size       (buffer_handle handle) const;
+    [[nodiscard]] std::uint64_t   stride     (buffer_handle handle) const;
+    [[nodiscard]] void*           mapped_ptr (buffer_handle handle) const;
+
+private:
+    struct slot
     {
-        device_ = &dev;
-        slots_.reserve(64);
+        D3D12MA::Allocation* allocation { nullptr };
+        ID3D12Resource*      resource   { nullptr };
+        std::uint64_t        size       { 0 };
+        std::uint64_t        stride     { 0 };
+        void*                mapped     { nullptr };
+        std::uint32_t        generation { 0 };
+        buffer_kind          kind       { buffer_kind::generic };
+    };
 
-        //~ slot 0 reserved as invalid will be never handed out
+    [[nodiscard]] std::uint32_t acquire_slot();
+
+    [[nodiscard]] bool upload_static(
+        const slot& target,
+        const void* data,
+        const std::uint64_t size
+    ) const;
+
+    struct allocation_result
+    {
+        std::uint32_t index { 0 };
+        bool          ok    { false };
+    };
+
+    [[nodiscard]] allocation_result allocate_only(const buffer_create_info& info);
+
+    struct upload_record
+    {
+        slot*         dst  { nullptr };
+        const void*   data { nullptr };
+        std::uint64_t size { 0 };
+    };
+
+    [[nodiscard]] bool upload_batch(std::span<const upload_record> records) const;
+
+    void release_slot_inline(slot& target) noexcept;
+
+private:
+    device*            device_   { nullptr };
+    deferred_releaser* releaser_ { nullptr };
+    upload_arena*      arena_    { nullptr };
+
+    std::vector<slot> slots_;
+
+    std::uint32_t next_generation_ { 1 };
+};
+
+#pragma region BUFFER_MANAGER_MAIN
+
+buffer_manager::buffer_manager()
+    : impl_(std::make_unique<implementation>())
+{
+}
+
+buffer_manager::~buffer_manager()
+{
+    impl_->deinitialize();
+}
+
+bool buffer_manager::initialize(device& dev) const
+{
+    return impl_->initialize(dev);
+}
+
+void buffer_manager::deinitialize() const noexcept
+{
+    impl_->deinitialize();
+}
+
+void buffer_manager::set_releaser(deferred_releaser* r) const noexcept
+{
+    impl_->set_releaser(r);
+}
+
+void buffer_manager::set_upload_arena(upload_arena* a) const noexcept
+{
+    impl_->set_upload_arena(a);
+}
+
+buffer_handle buffer_manager::create(const buffer_create_info& info) const
+{
+    return impl_->create(info);
+}
+
+std::vector<buffer_handle> buffer_manager::create_batch(
+    const std::span<const buffer_create_info> infos) const
+{
+    return impl_->create_batch(infos);
+}
+
+void buffer_manager::destroy(const buffer_handle h) const
+{
+    impl_->destroy(h);
+}
+
+ID3D12Resource* buffer_manager::resource(const buffer_handle h) const
+{
+    return impl_->resource(h);
+}
+
+std::uint64_t buffer_manager::gpu_address(const buffer_handle h) const
+{
+    return impl_->gpu_address(h);
+}
+
+std::uint64_t buffer_manager::size(const buffer_handle h) const
+{
+    return impl_->size(h);
+}
+
+std::uint64_t buffer_manager::stride(const buffer_handle h) const
+{
+    return impl_->stride(h);
+}
+
+void* buffer_manager::mapped_ptr(const buffer_handle h) const
+{
+    return impl_->mapped_ptr(h);
+}
+
+#pragma endregion
+
+#pragma region BUFFER_MANAGER_IMPLEMENTATION
+
+buffer_manager::implementation::~implementation()
+{
+    deinitialize();
+}
+
+bool buffer_manager::implementation::initialize(device& dev)
+{
+    device_ = &dev;
+
+    slots_.reserve(64);
+
+    if (slots_.empty())
+    {
+        //~ slot zero invalid
         slots_.push_back(slot{});
-        return device_->allocator() != nullptr;
     }
 
-    void buffer_manager::deinitialize() noexcept
+    if (!device_->allocator())
     {
-        for (auto& s : slots_)
-        {
-            if (s.mapped && s.resource)
-                s.resource->Unmap(0, nullptr);
-
-            if (s.allocation)
-                s.allocation->Release();   //~ releases the resource too
-            s = slot{};
-        }
-        slots_.clear();
-        device_ = nullptr;
+        LOG_ERROR("[buffer] initialize failed allocator is null");
+        return false;
     }
 
-    std::uint32_t buffer_manager::acquire_slot()
+    return true;
+}
+
+void buffer_manager::implementation::deinitialize() noexcept
+{
+    for (auto& target : slots_)
     {
-        for (std::uint32_t i = 1; i < slots_.size(); ++i)
-        {
-            const slot& s = slots_[i];
-
-            //~ truly free slot
-            if (s.generation == 0 &&
-                s.resource == nullptr &&
-                s.allocation == nullptr &&
-                s.mapped == nullptr)
-            {
-                return i;
-            }
-        }
-
-        slots_.push_back(slot{});
-        return static_cast<std::uint32_t>(slots_.size() - 1);
+        release_slot_inline(target);
     }
 
-    buffer_manager::allocation_result
-        buffer_manager::allocate_only(const buffer_create_info& info)
+    slots_.clear();
+
+    device_   = nullptr;
+    releaser_ = nullptr;
+    arena_    = nullptr;
+
+    next_generation_ = 1;
+}
+
+void buffer_manager::implementation::set_releaser(deferred_releaser* releaser) noexcept
+{
+    releaser_ = releaser;
+}
+
+void buffer_manager::implementation::set_upload_arena(upload_arena* arena) noexcept
+{
+    arena_ = arena;
+}
+
+std::uint32_t buffer_manager::implementation::acquire_slot()
+{
+    for (std::uint32_t i = 1; i < slots_.size(); ++i)
     {
-        if (!device_ || !device_->allocator() || info.size_bytes == 0)
-            return {};
+        const slot& target = slots_[i];
 
-        const std::uint32_t idx = acquire_slot();
-        slot& s  = slots_[idx];
-        s.generation = ~0u;
-        s.size   = info.size_bytes;
-        s.stride = info.stride;
-        s.kind   = info.kind;
-
-        const bool is_constant = (info.kind == buffer_kind::constant);
-
-        D3D12MA::ALLOCATION_DESC alloc_desc{};
-        alloc_desc.HeapType = is_constant ? D3D12_HEAP_TYPE_UPLOAD
-                                          : D3D12_HEAP_TYPE_DEFAULT;
-
-        const std::uint64_t alloc_size = helpers::adjust_to_256(info.size_bytes, is_constant);
-
-        D3D12_RESOURCE_DESC desc{};
-        desc.Dimension          = D3D12_RESOURCE_DIMENSION_BUFFER;
-        desc.Alignment          = 0;
-        desc.Width              = alloc_size;
-        desc.Height             = 1;
-        desc.DepthOrArraySize   = 1;
-        desc.MipLevels          = 1;
-        desc.Format             = DXGI_FORMAT_UNKNOWN;
-        desc.SampleDesc         = { 1, 0 };
-        desc.Layout             = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        desc.Flags              = D3D12_RESOURCE_FLAG_NONE;
-
-        const D3D12_RESOURCE_STATES initial_state = is_constant
-            ? D3D12_RESOURCE_STATE_GENERIC_READ
-            : D3D12_RESOURCE_STATE_COMMON;
-
-        if (FAILED(device_->allocator()->CreateResource(
-                &alloc_desc, &desc, initial_state, nullptr,
-                &s.allocation, IID_PPV_ARGS(&s.resource))))
+        if (target.generation == 0 &&
+            target.resource   == nullptr &&
+            target.allocation == nullptr &&
+            target.mapped     == nullptr)
         {
-            spdlog::error("[buffer] CreateResource failed ({})", info.debug_name);
-            s = slot{};
-            return {};
+            return i;
         }
-
-        wchar_t wname[64];
-        swprintf_s(wname, L"%hs", info.debug_name);
-        s.resource->SetName(wname);
-
-        if (is_constant)
-        {
-            //~ persistently map
-            constexpr D3D12_RANGE no_read{ 0, 0 };
-            if (FAILED(s.resource->Map(0, &no_read, &s.mapped)))
-            {
-                spdlog::error("[buffer] CB Map failed ({})", info.debug_name);
-                s.allocation->Release(); s = slot{};
-                return {};
-            }
-            if (info.initial_data)
-                std::memcpy(s.mapped, info.initial_data, info.size_bytes);
-        }
-
-        return { idx, true };
     }
 
-    buffer_handle buffer_manager::create(const buffer_create_info& info)
+    slots_.push_back(slot{});
+    return static_cast<std::uint32_t>(slots_.size() - 1);
+}
+
+buffer_manager::implementation::allocation_result
+buffer_manager::implementation::allocate_only(const buffer_create_info& info)
+{
+    if (!device_)
     {
-        const auto alloc = allocate_only(info);
-        if (!alloc.ok) return buffer_handle::invalid();
-
-        slot& s = slots_[alloc.index];
-
-        //~ non constant with initial data uses the staged upload
-        if (info.kind != buffer_kind::constant && info.initial_data)
-        {
-            if (!upload_static(s, info.initial_data, info.size_bytes))
-            {
-                s.allocation->Release(); s = slot{};
-                return buffer_handle::invalid();
-            }
-        }
-
-        const std::uint32_t gen = next_generation_++;
-        if (next_generation_ == 0) next_generation_ = 1;
-        s.generation = gen;
-
-        return buffer_handle{ alloc.index, gen };
+        LOG_ERROR("[buffer] allocate failed device is null");
+        return {};
     }
 
-    std::vector<buffer_handle>
-        buffer_manager::create_batch(std::span<const buffer_create_info> infos)
+    if (!device_->allocator())
     {
-        std::vector<buffer_handle> out;
-        out.reserve(infos.size());
-
-        std::vector<std::uint32_t> alloc_indices;
-        alloc_indices.reserve(infos.size());
-
-        //~ pass one allocate every slot first
-        //  slots vector may grow and invalidate pointers
-        //  so do not capture slot pointers yet
-        for (const auto& info : infos)
-        {
-            const auto a = allocate_only(info);
-            if (!a.ok)
-            {
-                //~ roll back this batch
-                for (const auto idx : alloc_indices)
-                {
-                    auto& s = slots_[idx];
-                    if (s.mapped && s.resource) s.resource->Unmap(0, nullptr);
-                    if (s.allocation) s.allocation->Release();
-                    s = slot{};
-                }
-                return {};
-            }
-            alloc_indices.push_back(a.index);
-        }
-
-        //~ pass two build upload records
-        //  slots is stable for the rest of this call
-        std::vector<upload_record> uploads;
-        uploads.reserve(infos.size());
-        for (std::size_t i = 0; i < infos.size(); ++i)
-        {
-            const auto& info = infos[i];
-            if (info.kind == buffer_kind::constant || !info.initial_data)
-                continue;
-
-            slot& s = slots_[alloc_indices[i]];
-            upload_record r{};
-            r.dst  = &s;
-            r.data = info.initial_data;
-            r.size = info.size_bytes;
-            uploads.push_back(r);
-        }
-
-        //~ one staging one list one wait
-        if (!uploads.empty())
-        {
-            if (!upload_batch(uploads))
-            {
-                spdlog::error("[buffer] batch upload failed");
-                for (const auto idx : alloc_indices)
-                {
-                    auto& s = slots_[idx];
-                    if (s.mapped && s.resource) s.resource->Unmap(0, nullptr);
-                    if (s.allocation) s.allocation->Release();
-                    s = slot{};
-                }
-                return {};
-            }
-        }
-
-        //~ assign generations and produce handles
-        for (const auto idx : alloc_indices)
-        {
-            slot& s = slots_[idx];
-            const std::uint32_t gen = next_generation_++;
-            if (next_generation_ == 0) next_generation_ = 1;
-            s.generation = gen;
-            out.push_back(buffer_handle{ idx, gen });
-        }
-
-        spdlog::info("[buffer] batch created {} buffers in one flush", out.size());
-        return out;
+        LOG_ERROR("[buffer] allocate failed allocator is null");
+        return {};
     }
 
-    //~ one staging arena
-    //~ one command list
-    //~ one fence wait
-    bool buffer_manager::upload_batch(std::span<const upload_record> records) const
+    if (info.size_bytes == 0)
     {
-        if (records.empty()) return true;
+        LOG_ERROR("[buffer] allocate failed size is zero");
+        return {};
+    }
 
-        auto* d3d   = device_->d3d12_device();
-        auto* queue = device_->graphics_queue();
-        auto* alloc = device_->allocator();
+    const std::uint32_t index = acquire_slot();
 
-        //~ compute total staging size
-        std::uint64_t total = 0;
-        for (const auto& r : records) total += r.size;
+    slot& target = slots_[index];
 
-        D3D12MA::ALLOCATION_DESC up_desc{};
-        up_desc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
+    target.generation = ~0u;
+    target.size       = info.size_bytes;
+    target.stride     = info.stride;
+    target.kind       = info.kind;
 
-        D3D12_RESOURCE_DESC ub{};
-        ub.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
-        ub.Width            = total;
-        ub.Height           = 1;
-        ub.DepthOrArraySize = 1;
-        ub.MipLevels        = 1;
-        ub.Format           = DXGI_FORMAT_UNKNOWN;
-        ub.SampleDesc       = { 1, 0 };
-        ub.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    const bool is_constant = info.kind == buffer_kind::constant;
 
-        D3D12MA::Allocation* staging_alloc = nullptr;
-        Microsoft::WRL::ComPtr<ID3D12Resource> staging;
-        if (FAILED(alloc->CreateResource(&up_desc, &ub,
-                D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                &staging_alloc, IID_PPV_ARGS(&staging))))
-        {
-            spdlog::error("[buffer] batch staging CreateResource failed");
-            return false;
-        }
+    const bool is_uav =
+        info.kind == buffer_kind::skinning_output ||
+        info.kind == buffer_kind::default_uav;
 
-        //~ map and copy all regions
-        void* mapped = nullptr;
+    D3D12MA::ALLOCATION_DESC alloc_desc{};
+    alloc_desc.HeapType = is_constant
+        ? D3D12_HEAP_TYPE_UPLOAD
+        : D3D12_HEAP_TYPE_DEFAULT;
+
+    const std::uint64_t allocation_size =
+        helpers::adjust_to_256(info.size_bytes, is_constant);
+
+    D3D12_RESOURCE_DESC desc{};
+    desc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+    desc.Alignment        = 0;
+    desc.Width            = allocation_size;
+    desc.Height           = 1;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels        = 1;
+    desc.Format           = DXGI_FORMAT_UNKNOWN;
+    desc.SampleDesc       = { 1, 0 };
+    desc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    desc.Flags            = is_uav
+        ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+        : D3D12_RESOURCE_FLAG_NONE;
+
+    const D3D12_RESOURCE_STATES initial_state = is_constant
+        ? D3D12_RESOURCE_STATE_GENERIC_READ
+        : D3D12_RESOURCE_STATE_COMMON;
+
+    const HRESULT hr = device_->allocator()->CreateResource(
+        &alloc_desc,
+        &desc,
+        initial_state,
+        nullptr,
+        &target.allocation,
+        IID_PPV_ARGS(&target.resource)
+    );
+
+    if (FAILED(hr))
+    {
+        LOG_ERROR(
+            "[buffer] CreateResource failed name={} hr=0x{:08X}",
+            info.debug_name ? info.debug_name : "<null>",
+            static_cast<std::uint32_t>(hr)
+        );
+
+        target = slot{};
+        return {};
+    }
+
+    wchar_t wide_name[64]{};
+    swprintf_s(wide_name, L"%hs", info.debug_name ? info.debug_name : "buffer");
+    target.resource->SetName(wide_name);
+
+    if (is_constant)
+    {
         constexpr D3D12_RANGE no_read{ 0, 0 };
-        if (FAILED(staging->Map(0, &no_read, &mapped)))
+
+        if (const HRESULT map_hr = target.resource->Map(0, &no_read, &target.mapped); FAILED(map_hr))
         {
-            spdlog::error("[buffer] batch staging Map failed");
-            staging_alloc->Release();
-            return false;
+            LOG_ERROR(
+                "[buffer] constant buffer Map failed name={} hr=0x{:08X}",
+                info.debug_name ? info.debug_name : "<null>",
+                static_cast<std::uint32_t>(map_hr)
+            );
+
+            if (target.allocation)
+                target.allocation->Release();
+
+            target = slot{};
+            return {};
         }
 
-        auto* base = static_cast<std::uint8_t*>(mapped);
-        std::uint64_t off = 0;
-        std::vector<std::uint64_t> offsets;
-        offsets.reserve(records.size());
-        for (const auto& r : records)
+        if (info.initial_data)
         {
-            offsets.push_back(off);
-            std::memcpy(base + off, r.data, r.size);
-            off += r.size;
+            std::memcpy(target.mapped, info.initial_data, info.size_bytes);
         }
-        staging->Unmap(0, nullptr);
+    }
 
-        //~ one shot command list
-        Microsoft::WRL::ComPtr<ID3D12CommandAllocator>    cmd_alloc;
-        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmd;
-        d3d->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmd_alloc));
-        d3d->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc.Get(),
-                               nullptr, IID_PPV_ARGS(&cmd));
+    return { index, true };
+}
 
-        //~ all copy regions
-        for (std::size_t i = 0; i < records.size(); ++i)
+buffer_handle buffer_manager::implementation::create(const buffer_create_info& info)
+{
+    const allocation_result alloc = allocate_only(info);
+    if (!alloc.ok)
+        return buffer_handle::invalid();
+
+    slot& target = slots_[alloc.index];
+
+    if (info.kind != buffer_kind::constant && info.initial_data)
+    {
+        if (!upload_static(target, info.initial_data, info.size_bytes))
         {
-            cmd->CopyBufferRegion(records[i].dst->resource, 0,
-                                  staging.Get(), offsets[i],
-                                  records[i].size);
+            release_slot_inline(target);
+            return buffer_handle::invalid();
         }
+    }
 
-        //~ all barriers in one call
-        std::vector<D3D12_RESOURCE_BARRIER> barriers;
-        barriers.reserve(records.size());
-        for (const auto& r : records)
+    const std::uint32_t generation = next_generation_++;
+
+    if (next_generation_ == 0)
+    {
+        next_generation_ = 1;
+    }
+
+    target.generation = generation;
+
+    return buffer_handle{ alloc.index, generation };
+}
+
+std::vector<buffer_handle> buffer_manager::implementation::create_batch(
+    std::span<const buffer_create_info> infos)
+{
+    std::vector<buffer_handle> output;
+    output.reserve(infos.size());
+
+    std::vector<std::uint32_t> allocation_indices;
+    allocation_indices.reserve(infos.size());
+
+    for (const auto& info : infos)
+    {
+        const allocation_result allocation = allocate_only(info);
+
+        if (!allocation.ok)
         {
-            D3D12_RESOURCE_BARRIER b{};
-            b.Type  = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            b.Transition.pResource   = r.dst->resource;
-            b.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-            b.Transition.StateAfter  =
-                (r.dst->kind == buffer_kind::index)
-                    ? D3D12_RESOURCE_STATE_INDEX_BUFFER
-                    : D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-            b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            barriers.push_back(b);
+            for (const std::uint32_t index : allocation_indices)
+            {
+                release_slot_inline(slots_[index]);
+            }
+
+            return {};
         }
-        cmd->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
 
-        cmd->Close();
+        allocation_indices.push_back(allocation.index);
+    }
 
-        ID3D12CommandList* lists[] = { cmd.Get() };
-        queue->ExecuteCommandLists(1, lists);
+    std::vector<upload_record> uploads;
+    uploads.reserve(infos.size());
 
-        //~ one wait
-        fence flush_fence;
-        if (!flush_fence.initialize(*device_))
+    for (std::size_t i = 0; i < infos.size(); ++i)
+    {
+        const buffer_create_info& info = infos[i];
+
+        if (info.kind == buffer_kind::constant || !info.initial_data)
+            continue;
+
+        slot& target = slots_[allocation_indices[i]];
+
+        upload_record record{};
+        record.dst  = &target;
+        record.data = info.initial_data;
+        record.size = info.size_bytes;
+
+        uploads.push_back(record);
+    }
+
+    if (!uploads.empty())
+    {
+        if (!upload_batch(uploads))
         {
-            staging_alloc->Release();
-            return false;
-        }
-        const std::uint64_t target = flush_fence.signal(queue);
-        (void)flush_fence.wait(target);
-        flush_fence.deinitialize();
+            LOG_ERROR("[buffer] batch upload failed");
 
-        staging_alloc->Release();
+            for (const std::uint32_t index : allocation_indices)
+            {
+                release_slot_inline(slots_[index]);
+            }
+
+            return {};
+        }
+    }
+
+    for (const std::uint32_t index : allocation_indices)
+    {
+        slot& target = slots_[index];
+
+        const std::uint32_t generation = next_generation_++;
+
+        if (next_generation_ == 0)
+        {
+            next_generation_ = 1;
+        }
+
+        target.generation = generation;
+
+        output.push_back(buffer_handle{ index, generation });
+    }
+
+    LOG_INFO("[buffer] batch created {} buffers in one flush", output.size());
+
+    return output;
+}
+
+bool buffer_manager::implementation::upload_batch(
+    std::span<const upload_record> records) const
+{
+    if (records.empty())
         return true;
+
+    if (!arena_)
+    {
+        LOG_ERROR("[buffer] upload_batch called before upload arena wired");
+        return false;
     }
 
-    //~ stage through an upload buffer copy on the graphics queue and block until done
-    //  init-time only safe because no frames are in flight yet
-    bool buffer_manager::upload_static(const slot& s, const void* data, const std::uint64_t size) const
+    if (!arena_->begin_batch())
     {
-        auto* d3d   = device_->d3d12_device();
-        auto* queue = device_->graphics_queue();
-        auto* alloc = device_->allocator();
+        LOG_ERROR("[buffer] arena begin_batch failed");
+        return false;
+    }
 
-        //~ staging upload buffer
-        D3D12MA::ALLOCATION_DESC up_desc{};
-        up_desc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
-
-        D3D12_RESOURCE_DESC ub{};
-        ub.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
-        ub.Width            = size;
-        ub.Height           = 1;
-        ub.DepthOrArraySize = 1;
-        ub.MipLevels        = 1;
-        ub.Format           = DXGI_FORMAT_UNKNOWN;
-        ub.SampleDesc       = { 1, 0 };
-        ub.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-
-        D3D12MA::Allocation* staging_alloc = nullptr;
-        Microsoft::WRL::ComPtr<ID3D12Resource> staging;
-        if (FAILED(alloc->CreateResource(&up_desc, &ub,
-                D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                &staging_alloc, IID_PPV_ARGS(&staging))))
+    for (const auto& record : records)
+    {
+        if (!record.dst || !record.dst->resource || !record.data || record.size == 0)
         {
-            spdlog::error("[buffer] staging CreateResource failed");
+            LOG_ERROR("[buffer] upload record invalid");
+            arena_->cancel_batch();
             return false;
         }
 
-        //~ copy CPU data into staging
-        void* mapped = nullptr;
-        constexpr D3D12_RANGE no_read{ 0, 0 };
-        if (FAILED(staging->Map(0, &no_read, &mapped)))
+        const D3D12_RESOURCE_STATES state = end_state_for(record.dst->kind);
+
+        if (!arena_->add_buffer_copy(
+                record.dst->resource,
+                record.data,
+                record.size,
+                state))
         {
-            spdlog::error("[buffer] staging Map failed");
-            staging_alloc->Release();
+            LOG_ERROR("[buffer] arena add_buffer_copy failed");
+            arena_->cancel_batch();
             return false;
         }
-        std::memcpy(mapped, data, size);
-        staging->Unmap(0, nullptr);
-
-        //~ one-shot command list for the copy
-        Microsoft::WRL::ComPtr<ID3D12CommandAllocator>    cmd_alloc;
-        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmd;
-        d3d->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmd_alloc));
-        d3d->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc.Get(),
-                               nullptr, IID_PPV_ARGS(&cmd));
-
-        cmd->CopyBufferRegion(s.resource, 0, staging.Get(), 0, size);
-
-        //~ transition default buffer common to appropriate read state
-        D3D12_RESOURCE_BARRIER barrier{};
-        barrier.Type  = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Transition.pResource   = s.resource;
-        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-        barrier.Transition.StateAfter  =
-            (s.kind == buffer_kind::index)
-                ? D3D12_RESOURCE_STATE_INDEX_BUFFER
-                : D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        cmd->ResourceBarrier(1, &barrier);
-
-         (void)cmd->Close();
-
-        ID3D12CommandList* lists[] = { cmd.Get() };
-        queue->ExecuteCommandLists(1, lists);
-
-        //~ block until the copy completes
-        fence flush_fence;
-        if (!flush_fence.initialize(*device_))
-        {
-            staging_alloc->Release(); return false;
-        }
-
-        const std::uint64_t target = flush_fence.signal(queue);
-         (void)flush_fence.wait(target);
-        flush_fence.deinitialize();
-
-        staging_alloc->Release();
-        return true;
     }
 
-    void buffer_manager::destroy(const buffer_handle h)
+    return arena_->submit_and_wait();
+}
+
+bool buffer_manager::implementation::upload_static(
+    const slot& target,
+    const void* data,
+    const std::uint64_t upload_size) const
+{
+    if (!arena_)
     {
-        if (!h.valid() || h.index >= slots_.size())
-            return;
-
-        slot& s = slots_[h.index];
-        if (s.generation != h.generation)
-            return;   //~ stale
-
-        if (s.mapped && s.resource)
-            s.resource->Unmap(0, nullptr);
-
-        if (s.allocation)
-            s.allocation->Release();
-        s = slot{};
+        LOG_ERROR("[buffer] upload_static called before upload arena wired");
+        return false;
     }
 
-    ID3D12Resource* buffer_manager::resource(const buffer_handle h) const
+    if (!target.resource || !data || upload_size == 0)
     {
-        if (!h.valid() || h.index >= slots_.size())
-            return nullptr;
-
-        const slot& s = slots_[h.index];
-        return s.generation == h.generation ? s.resource : nullptr;
+        LOG_ERROR("[buffer] upload_static invalid arguments");
+        return false;
     }
 
-    std::uint64_t buffer_manager::gpu_address(const buffer_handle h) const
+    if (!arena_->begin_batch())
     {
-        auto* r = resource(h);
-        return r ? r->GetGPUVirtualAddress() : 0;
+        LOG_ERROR("[buffer] arena begin_batch failed");
+        return false;
     }
 
-    std::uint64_t buffer_manager::size(const buffer_handle h) const
+    const D3D12_RESOURCE_STATES state = end_state_for(target.kind);
+
+    if (!arena_->add_buffer_copy(target.resource, data, upload_size, state))
     {
-        if (!h.valid() || h.index >= slots_.size())
-            return 0;
-
-        const slot& s = slots_[h.index];
-        return s.generation == h.generation ? s.size : 0;
+        LOG_ERROR("[buffer] arena add_buffer_copy failed");
+        arena_->cancel_batch();
+        return false;
     }
 
-    std::uint64_t buffer_manager::stride(const buffer_handle h) const
+    return arena_->submit_and_wait();
+}
+
+void buffer_manager::implementation::destroy(const buffer_handle handle)
+{
+    if (!handle.valid() || handle.index >= slots_.size())
+        return;
+
+    slot& target = slots_[handle.index];
+
+    if (target.generation != handle.generation)
+        return;
+
+    if (target.mapped && target.resource)
     {
-        if (!h.valid() || h.index >= slots_.size())
-            return 0;
-
-        const slot& s = slots_[h.index];
-        return s.generation == h.generation ? s.stride : 0;
+        target.resource->Unmap(0, nullptr);
+        target.mapped = nullptr;
     }
 
-    void* buffer_manager::mapped_ptr(const buffer_handle h) const
+    if (releaser_)
     {
-        if (!h.valid() || h.index >= slots_.size())
-            return nullptr;
-
-        const slot& s = slots_[h.index];
-        return s.generation == h.generation ? s.mapped : nullptr;
+        releaser_->enqueue_allocation(target.allocation);
+        target.allocation = nullptr;
     }
-} // namespace cots::graphics::hardware
+    else if (target.allocation)
+    {
+        target.allocation->Release();
+        target.allocation = nullptr;
+    }
 
+    target = slot{};
+}
+
+ID3D12Resource* buffer_manager::implementation::resource(
+    const buffer_handle handle) const
+{
+    if (!handle.valid() || handle.index >= slots_.size())
+        return nullptr;
+
+    const slot& target = slots_[handle.index];
+
+    return target.generation == handle.generation
+        ? target.resource
+        : nullptr;
+}
+
+std::uint64_t buffer_manager::implementation::gpu_address(
+    const buffer_handle handle) const
+{
+    ID3D12Resource* target = resource(handle);
+
+    return target
+        ? target->GetGPUVirtualAddress()
+        : 0;
+}
+
+std::uint64_t buffer_manager::implementation::size(const buffer_handle handle) const
+{
+    if (!handle.valid() || handle.index >= slots_.size())
+        return 0;
+
+    const slot& target = slots_[handle.index];
+
+    return target.generation == handle.generation
+        ? target.size
+        : 0;
+}
+
+std::uint64_t buffer_manager::implementation::stride(const buffer_handle handle) const
+{
+    if (!handle.valid() || handle.index >= slots_.size())
+        return 0;
+
+    const slot& target = slots_[handle.index];
+
+    return target.generation == handle.generation
+        ? target.stride
+        : 0;
+}
+
+void* buffer_manager::implementation::mapped_ptr(const buffer_handle handle) const
+{
+    if (!handle.valid() || handle.index >= slots_.size())
+        return nullptr;
+
+    const slot& target = slots_[handle.index];
+
+    return target.generation == handle.generation
+        ? target.mapped
+        : nullptr;
+}
+
+void buffer_manager::implementation::release_slot_inline(slot& target) noexcept
+{
+    if (target.mapped && target.resource)
+    {
+        target.resource->Unmap(0, nullptr);
+        target.mapped = nullptr;
+    }
+
+    if (target.allocation)
+    {
+        target.allocation->Release();
+        target.allocation = nullptr;
+    }
+
+    target = slot{};
+}
+
+#pragma endregion

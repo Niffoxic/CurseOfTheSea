@@ -3,25 +3,25 @@
 #define CURSEOFTHESEA_BUFFER_MANAGER_H
 
 #include <cstdint>
+#include <memory>
 #include <vector>
-#include <wrl/client.h>
 #include <span>
 
 #include "resource.h"
 
 struct ID3D12Resource;
 
-namespace D3D12MA { class Allocation; }
-
 namespace cots::graphics::hardware
 {
     class device;
+    class deferred_releaser;
+    class upload_arena;
 
     struct buffer_create_info
     {
         std::uint64_t   size_bytes { 0 };
         buffer_kind     kind       { buffer_kind::generic };
-        const void*     initial_data { nullptr };   //~ optional - staged upload if set
+        const void*     initial_data { nullptr };   //~ staged upload if set
         std::uint64_t   stride     { 0 };           //~ for vertex buffers vertex size
         const char*     debug_name { "buffer" };
     };
@@ -35,63 +35,33 @@ namespace cots::graphics::hardware
         buffer_manager           (const buffer_manager&) = delete;
         buffer_manager& operator=(const buffer_manager&) = delete;
 
-        [[nodiscard]] bool initialize  (device& dev);
-                      void deinitialize() noexcept;
+        [[nodiscard]] bool initialize  (device& dev) const;
+                      void deinitialize() const noexcept;
+
+
+        void set_releaser    (deferred_releaser* r) const noexcept;
+        void set_upload_arena(upload_arena* a) const noexcept;
 
         //~ uploads run synchronously on the
-        [[nodiscard]] buffer_handle create(const buffer_create_info& info);
+        [[nodiscard]]
+        buffer_handle create(const buffer_create_info& info) const;
 
         //~ one flush for many buffers
         [[nodiscard]]
-        std::vector<buffer_handle> create_batch(std::span<const buffer_create_info> infos);
+        std::vector<buffer_handle> create_batch(std::span<const buffer_create_info> infos) const;
 
-        void destroy(buffer_handle h);
+        void destroy(buffer_handle h) const;
 
         //~ accessors for binding
-        [[nodiscard]] ID3D12Resource*           resource(buffer_handle h) const;
-        [[nodiscard]] std::uint64_t             gpu_address(buffer_handle h) const;
-        [[nodiscard]] std::uint64_t             size(buffer_handle h) const;
-        [[nodiscard]] std::uint64_t             stride(buffer_handle h) const;
-
-        //~ persistently-mapped CPU pointer for per-frame writes
-        [[nodiscard]] void*                     mapped_ptr(buffer_handle h) const;
+        [[nodiscard]] ID3D12Resource* resource   (buffer_handle h) const;
+        [[nodiscard]] std::uint64_t   gpu_address(buffer_handle h) const;
+        [[nodiscard]] std::uint64_t   size       (buffer_handle h) const;
+        [[nodiscard]] std::uint64_t   stride     (buffer_handle h) const;
+        [[nodiscard]] void*           mapped_ptr (buffer_handle h) const;
 
     private:
-        struct slot
-        {
-            D3D12MA::Allocation* allocation { nullptr };
-            ID3D12Resource*      resource   { nullptr };  //~ owned via allocation
-            std::uint64_t        size       { 0 };
-            std::uint64_t        stride     { 0 };
-            void*                mapped     { nullptr };  //~ constant buffers only
-            std::uint32_t        generation { 0 };        //~ 0 = free slot
-            buffer_kind          kind       { buffer_kind::generic };
-        };
-
-        [[nodiscard]] std::uint32_t acquire_slot();
-        bool upload_static(const slot& s, const void* data, std::uint64_t size) const;
-
-        //~ allocate without uploading
-        struct allocation_result
-        {
-            std::uint32_t index { 0 };
-            bool          ok    { false };
-        };
-        [[nodiscard]] allocation_result allocate_only(const buffer_create_info& info);
-
-        //~ payload for the batched upload
-        struct upload_record
-        {
-            slot*         dst;
-            const void*   data;
-            std::uint64_t size;
-        };
-        bool upload_batch(std::span<const upload_record> records) const;
-
-    private:
-        device*           device_ { nullptr };
-        std::vector<slot> slots_;
-        std::uint32_t     next_generation_ { 1 };
+        class implementation;
+        std::unique_ptr<implementation> impl_;
     };
 } // namespace cots::graphics::hardware
 
