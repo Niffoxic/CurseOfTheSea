@@ -11,4 +11,10 @@
 #ifndef CURSEOFTHESEA_GAMEPLAY_API_H
 #define CURSEOFTHESEA_GAMEPLAY_API_H
 
+#ifndef BUILDING_GAMEPLAY
+    #define GP_API __declspec(dllexport)
+#else
+    #define GP_API __declspec(dllimport)
+#endif
+
 #endif //CURSEOFTHESEA_GAMEPLAY_API_H

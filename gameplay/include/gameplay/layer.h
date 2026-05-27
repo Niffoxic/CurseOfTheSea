@@ -11,4 +11,6 @@
 #ifndef CURSEOFTHESEA_LAYER_H
 #define CURSEOFTHESEA_LAYER_H
 
+#include "gameplay\layer.h"
+
 #endif //CURSEOFTHESEA_LAYER_H
