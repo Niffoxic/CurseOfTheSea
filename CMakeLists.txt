@@ -3,7 +3,7 @@ project(CurseOfTheSea)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-include(cots_build_config)
+include(build_config)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,13 +15,9 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 find_package(FMOD REQUIRED)
 
-add_subdirectory(shared)
-add_subdirectory(framework)
-if(COTS_USE_EDITOR)
-    add_subdirectory(editor)
-endif()
 add_subdirectory(engine)
-add_subdirectory(game)
+add_subdirectory(gameplay)
+add_subdirectory(cots)
 
-include(cots_assets)
-cots_add_assets(engine)
+include(assets)
+cots_add_assets(cots)

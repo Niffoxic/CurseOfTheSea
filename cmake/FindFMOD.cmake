@@ -1,0 +1,50 @@
+set(FMOD_LOCAL_PATH    "${CMAKE_SOURCE_DIR}/vendor/fmod")
+
+# its my default safe is to put fmod on vendor
+set(FMOD_DEFAULT_PATH  "C:/Program Files (x86)/FMOD SoundSystem/FMOD Studio API Windows")
+
+find_path(FMOD_CORE_INCLUDE_DIR
+        NAMES fmod.hpp
+        HINTS ${FMOD_ROOT} $ENV{FMOD_ROOT} ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH}
+        PATH_SUFFIXES api/core/inc
+)
+find_path(FMOD_STUDIO_INCLUDE_DIR
+        NAMES fmod_studio.hpp
+        HINTS ${FMOD_ROOT} $ENV{FMOD_ROOT} ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH}
+        PATH_SUFFIXES api/studio/inc
+)
+
+find_library(FMOD_CORE_LIB_RELEASE   NAMES fmod_vc          HINTS ${FMOD_ROOT} $ENV{FMOD_ROOT} ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH} PATH_SUFFIXES api/core/lib/x64)
+find_library(FMOD_CORE_LIB_DEBUG     NAMES fmodL_vc         HINTS ${FMOD_ROOT} $ENV{FMOD_ROOT} ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH} PATH_SUFFIXES api/core/lib/x64)
+find_library(FMOD_STUDIO_LIB_RELEASE NAMES fmodstudio_vc    HINTS ${FMOD_ROOT} $ENV{FMOD_ROOT} ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH} PATH_SUFFIXES api/studio/lib/x64)
+find_library(FMOD_STUDIO_LIB_DEBUG   NAMES fmodstudioL_vc   HINTS ${FMOD_ROOT} $ENV{FMOD_ROOT} ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH} PATH_SUFFIXES api/studio/lib/x64)
+
+find_file(FMOD_CORE_DLL_RELEASE   NAMES fmod.dll        HINTS ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH} PATH_SUFFIXES api/core/lib/x64)
+find_file(FMOD_CORE_DLL_DEBUG     NAMES fmodL.dll       HINTS ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH} PATH_SUFFIXES api/core/lib/x64)
+find_file(FMOD_STUDIO_DLL_RELEASE NAMES fmodstudio.dll  HINTS ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH} PATH_SUFFIXES api/studio/lib/x64)
+find_file(FMOD_STUDIO_DLL_DEBUG   NAMES fmodstudioL.dll HINTS ${FMOD_LOCAL_PATH} ${FMOD_DEFAULT_PATH} PATH_SUFFIXES api/studio/lib/x64)
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(FMOD
+        REQUIRED_VARS FMOD_CORE_INCLUDE_DIR FMOD_STUDIO_INCLUDE_DIR FMOD_CORE_LIB_RELEASE FMOD_STUDIO_LIB_RELEASE
+)
+
+if(FMOD_FOUND AND NOT TARGET FMOD::Core)
+    add_library(FMOD::Core SHARED IMPORTED)
+    set_target_properties(FMOD::Core PROPERTIES
+            IMPORTED_LOCATION         "${FMOD_CORE_DLL_RELEASE}"
+            IMPORTED_LOCATION_DEBUG   "${FMOD_CORE_DLL_DEBUG}"
+            IMPORTED_IMPLIB           "${FMOD_CORE_LIB_RELEASE}"
+            IMPORTED_IMPLIB_DEBUG     "${FMOD_CORE_LIB_DEBUG}"
+            INTERFACE_INCLUDE_DIRECTORIES "${FMOD_CORE_INCLUDE_DIR}"
+    )
+    add_library(FMOD::Studio SHARED IMPORTED)
+    set_target_properties(FMOD::Studio PROPERTIES
+            IMPORTED_LOCATION         "${FMOD_STUDIO_DLL_RELEASE}"
+            IMPORTED_LOCATION_DEBUG   "${FMOD_STUDIO_DLL_DEBUG}"
+            IMPORTED_IMPLIB           "${FMOD_STUDIO_LIB_RELEASE}"
+            IMPORTED_IMPLIB_DEBUG     "${FMOD_STUDIO_LIB_DEBUG}"
+            INTERFACE_INCLUDE_DIRECTORIES "${FMOD_STUDIO_INCLUDE_DIR}"
+            INTERFACE_LINK_LIBRARIES  FMOD::Core
+    )
+endif()
