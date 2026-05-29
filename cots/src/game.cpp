@@ -8,9 +8,15 @@
 // A linear story driven pirate adventure built from scratch in C++23 and
 // DirectX 12 for the University of Warwick game project assessment.
 //=============================================================================
+#include <gameplay/application.h>
+#include "game_layer.h"
+
+#include <memory>
 #include <windows.h>
 
-int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+int WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    return S_OK;
+    gameplay::application app{};
+    app.push_layer(std::make_unique<cots::game_layer>());
+    return app.run();
 }

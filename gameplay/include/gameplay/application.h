@@ -11,4 +11,33 @@
 #ifndef CURSEOFTHESEA_APPLICATION_H
 #define CURSEOFTHESEA_APPLICATION_H
 
+#include "gameplay/gameplay_api.h"
+#include "gameplay/layer.h"
+
+#include <memory>
+
+namespace gameplay
+{
+    class application
+    {
+    public:
+         application();
+        ~application();
+
+        application(const application&) = delete;
+        application(application&&)      = delete;
+
+        application& operator=(const application&) = delete;
+        application& operator=(application&&)      = delete;
+
+        void push_layer  (std::unique_ptr<layer> l);
+        void push_overlay(std::unique_ptr<layer> l);
+
+        int run();
+    private:
+        struct impl;
+        std::unique_ptr<impl> p_;
+    };
+} // namespace gameplay
+
 #endif //CURSEOFTHESEA_APPLICATION_H

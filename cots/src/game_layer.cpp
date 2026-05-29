@@ -8,10 +8,21 @@
 // A linear story driven pirate adventure built from scratch in C++23 and
 // DirectX 12 for the University of Warwick game project assessment.
 //=============================================================================
-#ifndef CURSEOFTHESEA_GAMEPLAY_H
-#define CURSEOFTHESEA_GAMEPLAY_H
+#include "game_layer.h"
 
-#include "gameplay/application.h"
-#include "gameplay/layer.h"
+namespace cots
+{
+    game_layer::game_layer() = default;
 
-#endif //CURSEOFTHESEA_GAMEPLAY_H
+    void game_layer::on_attach()
+    {
+    }
+
+    void game_layer::on_detach()
+    {
+    }
+
+    void game_layer::on_update(float dt)
+    {
+    }
+} // namespace cots

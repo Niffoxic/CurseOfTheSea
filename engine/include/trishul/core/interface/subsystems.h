@@ -8,10 +8,22 @@
 // A linear story driven pirate adventure built from scratch in C++23 and
 // DirectX 12 for the University of Warwick game project assessment.
 //=============================================================================
-#ifndef CURSEOFTHESEA_GAMEPLAY_H
-#define CURSEOFTHESEA_GAMEPLAY_H
+#ifndef CURSEOFTHESEA_ISUBSYSTEMS_H
+#define CURSEOFTHESEA_ISUBSYSTEMS_H
+#include <string>
 
-#include "gameplay/application.h"
-#include "gameplay/layer.h"
+namespace trishul::interfaces
+{
+    __interface subsystems
+    {
+        //~ lifecycle
+        [[nodiscard]]
+        virtual bool initialize  ();
+        virtual void deinitialize() noexcept;
 
-#endif //CURSEOFTHESEA_GAMEPLAY_H
+        [[nodiscard]]
+        std::string_view name() const noexcept;
+    };
+} // namespace trishul::interfaces
+
+#endif //CURSEOFTHESEA_ISUBSYSTEMS_H

@@ -8,10 +8,14 @@
 // A linear story driven pirate adventure built from scratch in C++23 and
 // DirectX 12 for the University of Warwick game project assessment.
 //=============================================================================
-#ifndef CURSEOFTHESEA_GAMEPLAY_H
-#define CURSEOFTHESEA_GAMEPLAY_H
+#include <windows.h>
 
-#include "gameplay/application.h"
-#include "gameplay/layer.h"
+#ifndef COTS_AGILITY_SDK_VERSION
+#  define COTS_AGILITY_SDK_VERSION 616
+#endif
 
-#endif //CURSEOFTHESEA_GAMEPLAY_H
+extern "C"
+{
+__declspec(dllexport) extern const UINT     D3D12SDKVersion = COTS_AGILITY_SDK_VERSION;
+__declspec(dllexport) extern const char8_t *D3D12SDKPath = u8".\\D3D12\\";
+}

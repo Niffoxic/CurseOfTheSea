@@ -18,7 +18,7 @@ target_compile_definitions(gameplay PRIVATE
         _UNICODE UNICODE
         WIN32_LEAN_AND_MEAN
         NOMINMAX
-        BUILDING_FRAMEWORK
+        BUILDING_GAMEPLAY
 )
 
 target_link_libraries(gameplay PUBLIC engine winmm)

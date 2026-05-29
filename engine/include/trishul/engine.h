@@ -11,6 +11,11 @@
 #ifndef CURSEOFTHESEA_ENGINE_H
 #define CURSEOFTHESEA_ENGINE_H
 
-#include "fox/engine_api.h"
+#include "trishul/engine_api.h"
+
+namespace trishul
+{
+    class engine;
+} // namespace trishul
 
 #endif //CURSEOFTHESEA_ENGINE_H

@@ -8,3 +8,11 @@
 // A linear story driven pirate adventure built from scratch in C++23 and
 // DirectX 12 for the University of Warwick game project assessment.
 //=============================================================================
+#include "gameplay/layer.h"
+
+namespace gameplay
+{
+    layer::layer(std::string name)
+    : name_(std::move(name))
+    {}
+} // namespace gameplay

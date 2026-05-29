@@ -93,8 +93,7 @@ function(cots_add_general_dependencies target)
     FetchContent_MakeAvailable(meshoptimizer)
     target_link_libraries(${target} PRIVATE meshoptimizer)
 
-
-    include(cots_animation)
+    include(animation)
 
     cots_link_ozz (${target} PUBLIC)
     cots_link_ufbx(${target} PRIVATE)
