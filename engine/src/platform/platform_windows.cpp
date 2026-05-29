@@ -11,10 +11,9 @@
 #include "trishul/platform/platform_windows.h"
 
 #include "trishul/core/engine_assert.h"
+#include "trishul/utils/logger.h"
 #include "trishul/platform/inputs/keyboard_component.h"
 #include "trishul/platform/inputs/mouse_component.h"
-
-#include <spdlog/spdlog.h>
 
 namespace trishul
 {
@@ -45,16 +44,17 @@ namespace trishul
 
         if (!get_component<keyboard>().initialize(input_info))
         {
-            spdlog::error("failed to initialize keyboard");
+            LOG_ERROR("failed to initialize keyboard");
             return false;
         }
 
         if (!get_component<mouse>().initialize(input_info))
         {
-            spdlog::error("failed to initialize mouse");
+            LOG_ERROR("failed to initialize mouse");
             return false;
         }
 
+        LOG_INFO("platform window initialized");
         return true;
     }
 
@@ -245,7 +245,7 @@ namespace trishul
 
         if (!AdjustWindowRectEx(&rt, style, FALSE, ex_style))
         {
-            spdlog::warn("failed to adjust window rect window might size oddly");
+            LOG_WARN("failed to adjust window rect window might size oddly");
         }
 
         const win_size<int> full_size{ rt.right - rt.left, rt.bottom - rt.top };
@@ -267,6 +267,8 @@ namespace trishul
 
         screen_state_ = screen_state::windowed | screen_state::active;
         status_       = platform_status::Running;
+
+        LOG_INFO("window created {}x{}", full_size.width, full_size.height);
     }
 
     LRESULT platform_window::handle_message(

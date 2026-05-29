@@ -15,7 +15,6 @@
 #include <trishul/platform/inputs/keyboard_component.h>
 #include <trishul/platform/inputs/mouse_component.h>
 
-#include <cstdio>
 #include <format>
 #include <print>
 #include <string>
@@ -62,20 +61,11 @@ namespace cots
 
     void game_layer::on_attach()
     {
-        if (AllocConsole())
-        {
-            FILE* stream = nullptr;
-            freopen_s(&stream, "CONOUT$", "w", stdout);
-            freopen_s(&stream, "CONOUT$", "w", stderr);
-            setvbuf(stdout, nullptr, _IONBF, 0);
-            SetConsoleTitleW(L"cots input test");
-        }
         std::println("input test ready press keys or click");
     }
 
     void game_layer::on_detach()
     {
-        FreeConsole();
     }
 
     void game_layer::on_update(float dt)
@@ -87,8 +77,8 @@ namespace cots
         auto* window = service_locator::try_get<platform_window>();
         if (!window) return;
 
-        auto& kb = window->get_component<keyboard>();
-        auto& ms = window->get_component<mouse>();
+        const auto& kb = window->get_component<keyboard>();
+        const auto& ms = window->get_component<mouse>();
 
         //~ modifier prefix for non modifier keys
         std::string mods;
