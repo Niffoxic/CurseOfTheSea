@@ -13,10 +13,22 @@
 
 namespace trishul::interfaces
 {
-    __interface tickable
+    class __declspec(novtable) tickable
     {
+    public:
+        virtual ~tickable() noexcept = default;
+
+        tickable(const tickable&)            = delete;
+        tickable(tickable&&)                 = delete;
+
+        tickable& operator=(const tickable&) = delete;
+        tickable& operator=(tickable&&)      = delete;
+
         virtual void begin_update(float dt) = 0;
         virtual void end_update  ()         = 0;
+
+    protected:
+        tickable() noexcept = default;
     };
 } // namespace trishul::interfaces
 

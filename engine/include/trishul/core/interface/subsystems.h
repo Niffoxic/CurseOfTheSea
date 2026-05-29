@@ -10,19 +10,39 @@
 //=============================================================================
 #ifndef CURSEOFTHESEA_ISUBSYSTEMS_H
 #define CURSEOFTHESEA_ISUBSYSTEMS_H
-#include <string>
+#include <string_view>
 
 namespace trishul::interfaces
 {
-    __interface subsystems
+    class __declspec(novtable) subsystems
     {
+    public:
+        virtual ~subsystems() noexcept = default;
+
+        subsystems(const subsystems&)            = delete;
+        subsystems(subsystems&&)                 = delete;
+        subsystems& operator=(const subsystems&) = delete;
+        subsystems& operator=(subsystems&&)      = delete;
+
         //~ lifecycle
         [[nodiscard]]
-        virtual bool initialize  ();
-        virtual void deinitialize() noexcept;
+        virtual bool initialize  ()          = 0;
+        virtual void deinitialize() noexcept = 0;
 
         [[nodiscard]]
-        std::string_view name() const noexcept;
+        std::string_view name() const noexcept { return name_; }
+
+    protected:
+        subsystems() = default;
+
+        explicit subsystems(const std::string_view name)
+            : name_{ name }
+        {}
+
+        void set_name(const std::string_view name) { name_ = name; }
+
+    private:
+        std::string name_{ "No Name" };
     };
 } // namespace trishul::interfaces
 

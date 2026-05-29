@@ -1,5 +1,8 @@
 add_library(trishul_engine SHARED
         src/engine.cpp
+        src/platform/inputs/mouse_component.cpp
+        src/platform/inputs/keyboard_component.cpp
+        src/platform/platform_windows.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)
