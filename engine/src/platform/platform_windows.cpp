@@ -210,7 +210,7 @@ namespace trishul
 
         WNDCLASSEXW window_class{};
         window_class.cbSize        = sizeof(WNDCLASSEXW);
-        window_class.style         = CS_HREDRAW | CS_VREDRAW;
+        window_class.style         = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
         window_class.lpfnWndProc   = window_proc_setup;
         window_class.hInstance     = window_instance_;
         window_class.hCursor       = LoadCursorW(nullptr, IDC_ARROW);
