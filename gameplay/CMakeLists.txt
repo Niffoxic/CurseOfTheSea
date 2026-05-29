@@ -21,4 +21,4 @@ target_compile_definitions(gameplay PRIVATE
         BUILDING_GAMEPLAY
 )
 
-target_link_libraries(gameplay PUBLIC engine winmm)
+target_link_libraries(gameplay PUBLIC trishul_engine winmm)

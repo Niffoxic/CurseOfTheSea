@@ -11,7 +11,9 @@
 #ifndef CURSEOFTHESEA_ENGINE_H
 #define CURSEOFTHESEA_ENGINE_H
 
+#include <cstdint>
 #include <memory>
+#include <string>
 
 namespace trishul
 {
@@ -28,10 +30,21 @@ namespace trishul
         float physics_thread_ms{};
     };
 
+    //~ supplied by the game when it creates the engine
+    struct engine_create_info
+    {
+        std::wstring  window_title    { L"Trishul Engine" };
+        std::uint32_t window_width    { 1280 };
+        std::uint32_t window_height   { 720 };
+
+        int          icon_resource_id { 0 };
+        std::wstring icon_path        {};
+    };
+
     class engine final
     {
     public:
-         engine();
+        explicit engine(engine_create_info info = {});
         ~engine();
 
         //~ copy restricted

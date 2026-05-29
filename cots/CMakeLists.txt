@@ -2,6 +2,7 @@ add_executable(cots WIN32
         src/game.cpp
         src/agility_sdk.cpp
         src/game_layer.cpp
+        app.rc
 )
 
 cots_apply_compile_flags(cots)
@@ -44,4 +45,12 @@ add_custom_command(TARGET cots POST_BUILD
         $<TARGET_FILE:FMOD::Core>
         $<TARGET_FILE_DIR:cots>
         COMMENT "Copying FMOD Core DLL next to the cots exe"
+)
+
+#~ deco assets icons next to the exe so runtime file loads resolve
+add_custom_command(TARGET cots POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/deco
+        $<TARGET_FILE_DIR:cots>/deco
+        COMMENT "Copying deco assets next to the cots exe"
 )

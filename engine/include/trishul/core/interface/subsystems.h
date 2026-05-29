@@ -10,6 +10,7 @@
 //=============================================================================
 #ifndef CURSEOFTHESEA_ISUBSYSTEMS_H
 #define CURSEOFTHESEA_ISUBSYSTEMS_H
+#include <string>
 #include <string_view>
 
 namespace trishul::interfaces

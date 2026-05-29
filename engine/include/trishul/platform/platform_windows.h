@@ -216,7 +216,6 @@ namespace trishul
         HINSTANCE       window_instance_{ nullptr };
         screen_state    screen_state_   { screen_state::none };
         platform_status status_         { platform_status::Running };
-
     };
 } // namespace trishul
 

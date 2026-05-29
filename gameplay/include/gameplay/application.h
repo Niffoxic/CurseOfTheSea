@@ -14,6 +14,8 @@
 #include "gameplay/gameplay_api.h"
 #include "gameplay/layer.h"
 
+#include <trishul/engine.h>
+
 #include <memory>
 
 namespace gameplay
@@ -21,7 +23,7 @@ namespace gameplay
     class application
     {
     public:
-         application();
+        explicit application(trishul::engine_create_info info = {});
         ~application();
 
         application(const application&) = delete;
@@ -33,7 +35,7 @@ namespace gameplay
         void push_layer  (std::unique_ptr<layer> l);
         void push_overlay(std::unique_ptr<layer> l);
 
-        int run();
+        int run() const;
     private:
         struct impl;
         std::unique_ptr<impl> p_;

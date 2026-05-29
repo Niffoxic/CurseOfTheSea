@@ -14,29 +14,39 @@
 #include "trishul/core/dependency_handler.h"
 #include "trishul/core/engine_assert.h"
 
+#include "trishul/services.h"
+
 using namespace trishul;
 
 struct engine::impl
 {
+    explicit impl(engine_create_info info)
+    : create_info_(std::move(info))
+    {}
+
     //~ initialization
-    void initialize_features();
-    void regulate_subsystems();
-    void regulate_tickable  ();
+                 void initialize_services();
+    [[nodiscard]]bool regulate_services  ();
+                 void regulate_tickable  ();
 
     //~ per frame
     void update_tickable();
     void compute_fps    ();
 
     //~ members
+    engine_create_info create_info_;
     dependency_handler<interfaces::subsystems> subsystem_scheduler_;
     dependency_handler<interfaces::tickable>   tickable_scheduler_;
     fps_information fps_{};
+
+    //~ services
+    platform_window* window_ = nullptr;
 };
 
 #pragma region ENGINE
 
-engine::engine()
-: p_(std::make_unique<impl>())
+engine::engine(engine_create_info info)
+: p_(std::make_unique<impl>(std::move(info)))
 {}
 
 engine::~engine()
@@ -51,10 +61,12 @@ engine::~engine()
 bool engine::initialize() const
 {
     ENGINE_ASSERT_MSG(p_, "Corrupted Engine or destroyed already");
-    p_->initialize_features();
-    p_->regulate_subsystems();
-    p_->regulate_tickable  ();
-    return false;
+    p_->initialize_services();
+
+    if (not p_->regulate_services()) return false;
+
+    p_->regulate_tickable();
+    return true;
 }
 
 void engine::tick() const
@@ -67,7 +79,8 @@ void engine::tick() const
 bool engine::should_close() const noexcept
 {
     ENGINE_ASSERT_MSG(p_, "Corrupted Engine or destroyed already");
-    return true;
+    ENGINE_ASSERT_MSG(p_->window_, "Corrupted window or destroyed already");
+    return p_->window_->should_close();
 }
 
 float engine::delta_time() const noexcept
@@ -86,24 +99,56 @@ fps_information engine::get_fps() const noexcept
 
 #pragma region ENGINE_IMPLEMENTATION
 
-void engine::impl::initialize_features()
+void engine::impl::initialize_services()
 {
+    window_ = service_locator::get<platform_window>();
 
+    window_create_info window_info{};
+    window_info.window_title     = create_info_.window_title;
+    window_info.window_size      = win_size<int>{
+        static_cast<int>(create_info_.window_width),
+        static_cast<int>(create_info_.window_height) };
+    window_info.icon_resource_id = create_info_.icon_resource_id;
+    window_info.icon_path        = create_info_.icon_path;
+    window_->set_window_create_info(window_info);
 }
 
-void engine::impl::regulate_subsystems()
+bool engine::impl::regulate_services()
 {
+    //~ register and build dependencies
+    subsystem_scheduler_.register_type(window_);
 
+    //~ initialize
+    for (auto* subsystem: subsystem_scheduler_)
+    {
+        ENGINE_ASSERT_MSG(subsystem, "Did you provide services?");
+        if (not subsystem->initialize())
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 void engine::impl::regulate_tickable()
 {
-
+    //~ register and build dependencies
+    tickable_scheduler_.register_type(window_);
 }
 
 void engine::impl::update_tickable()
 {
+    //~ update begin
+    for (const auto tickable: tickable_scheduler_)
+    {
+        if (tickable) tickable->begin_update(0.f);
+    }
 
+    //~ update end
+    for (const auto iter : std::views::reverse(tickable_scheduler_))
+    {
+        if (iter) iter->end_update();
+    }
 }
 
 void engine::impl::compute_fps()

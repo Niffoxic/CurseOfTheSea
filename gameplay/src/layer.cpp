@@ -12,7 +12,4 @@
 
 namespace gameplay
 {
-    layer::layer(std::string name)
-    : name_(std::move(name))
-    {}
 } // namespace gameplay

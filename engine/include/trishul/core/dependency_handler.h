@@ -17,11 +17,11 @@
 #include <typeindex>
 #include <memory>
 #include <queue>
-#include <stdexcept>
 #include <iterator>
 #include <type_traits>
-#include <functional>
 #include <cstddef>
+
+#include "trishul/core/engine_assert.h"
 
 namespace trishul
 {
@@ -54,27 +54,16 @@ namespace trishul
         dependency_handler& operator=(const dependency_handler&) = delete;
 
         template<typename U>
-        void register_type(const std::shared_ptr<U>& instance)
+        void register_type(U* instance)
         {
             static_assert(std::is_base_of_v<T, U>, "U must be derived from T");
-            if (!instance) throw std::runtime_error("register_type: null shared_ptr");
+            ENGINE_VERIFY_MSG(instance != nullptr, "register_type null pointer");
 
             const std::type_index id{ typeid(U) };
             if (nodes_.contains(id)) return;          // already registered skip
 
-            nodes_[id] = node{ instance.get(), {} };
+            nodes_[id] = node{ instance, {} };
             dirty_     = true;
-        }
-
-        template<typename U>
-        void register_type(std::reference_wrapper<std::shared_ptr<U>> ref)
-        {
-            register_type(ref.get());
-        }
-        template<typename U>
-        void register_type(std::reference_wrapper<const std::shared_ptr<U>> ref)
-        {
-            register_type(ref.get());
         }
 
         template<typename Depender, typename... DependsUpon>
@@ -90,11 +79,13 @@ namespace trishul
         }
 
         template<typename U, typename... Us>
-        void add_dependency(const std::shared_ptr<U>& depender,
-                            const std::shared_ptr<Us>&... deps)
+        void add_dependency(U* depender, Us*... deps)
         {
             static_assert(std::is_base_of_v<T, U>);
             static_assert((std::is_base_of_v<T, Us> && ...));
+
+            (void)depender;
+            ((void)deps, ...);
 
             node& n = require_node(typeid(U));
             (add_single_dep(n, typeid(U), typeid(Us)), ...);
@@ -114,15 +105,14 @@ namespace trishul
         node& require_node(const std::type_index& id)
         {
             const auto it = nodes_.find(id);
-            if (it == nodes_.end())
-                throw std::runtime_error("No such type registered");
+            ENGINE_VERIFY_MSG(it != nodes_.end(), "dependency handler no such type registered");
             return it->second;
         }
 
         void add_single_dep(node& n, std::type_index self, std::type_index dep)
         {
-            if (!nodes_.contains(dep)) throw std::runtime_error("No such type registered");
-            if (dep == self)           throw std::runtime_error("Self-dependency not allowed");
+            ENGINE_VERIFY_MSG(nodes_.contains(dep), "dependency handler no such type registered");
+            ENGINE_VERIFY_MSG(dep != self,          "dependency handler self dependency not allowed");
             n.dependencies.insert(dep);
         }
 
@@ -156,8 +146,7 @@ namespace trishul
                     if (--in_degree[dep] == 0) ready.push(dep);
             }
 
-            if (out != nodes_.size())
-                throw std::runtime_error("Cycle detected in dependency graph");
+            ENGINE_VERIFY_MSG(out == nodes_.size(), "dependency handler cycle detected");
 
             sorted_      = std::move(buf);
             sorted_size_ = out;

@@ -12,11 +12,12 @@
 #define CURSEOFTHESEA_ENGINE_API_H
 
 #ifdef BUILDING_ENGINE
-    #define FOX_ENGINE_API __declspec(dllexport)
+    #define TRISHUL_API __declspec(dllexport)
 #else
-    #define FOX_ENGINE_API __declspec(dllimport)
+    #define TRISHUL_API __declspec(dllimport)
 #endif
 
 
 #endif //CURSEOFTHESEA_ENGINE_API_H
+
 

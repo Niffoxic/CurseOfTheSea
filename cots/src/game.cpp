@@ -10,13 +10,23 @@
 //=============================================================================
 #include <gameplay/application.h>
 #include "game_layer.h"
+#include "resource.h"
+
+#include <trishul/engine.h>
 
 #include <memory>
 #include <windows.h>
 
 int WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    gameplay::application app{};
+    trishul::engine_create_info info{};
+    info.window_title     = L"Curse of the Sea";
+    info.window_width     = 1280;
+    info.window_height    = 720;
+    info.icon_resource_id = IDI_APP_ICON;
+    info.icon_path        = L"deco/app.ico";
+
+    gameplay::application app{ info };
     app.push_layer(std::make_unique<cots::game_layer>());
     return app.run();
 }

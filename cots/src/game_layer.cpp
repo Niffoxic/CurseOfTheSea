@@ -12,8 +12,6 @@
 
 namespace cots
 {
-    game_layer::game_layer() = default;
-
     void game_layer::on_attach()
     {
     }

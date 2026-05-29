@@ -23,7 +23,7 @@ namespace gameplay
     class layer
     {
     public:
-        explicit layer(std::string name);
+        layer() = default;
         virtual ~layer() = default;
 
         layer(const layer&) = delete;
@@ -47,8 +47,9 @@ namespace gameplay
 
         //~ setters
         void set_application(application* app) noexcept { app_ = app; }
-    private:
+    protected:
         std::string name_{ "Default Layer" };
+    private:
         application* app_{ nullptr };
     };
 } // namespace gameplay
