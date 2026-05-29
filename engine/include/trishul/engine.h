@@ -11,11 +11,49 @@
 #ifndef CURSEOFTHESEA_ENGINE_H
 #define CURSEOFTHESEA_ENGINE_H
 
-#include "trishul/engine_api.h"
+#include <memory>
 
 namespace trishul
 {
-    class engine;
+    struct fps_information
+    {
+        //~ fps
+        std::uint32_t main_thread   {};
+        std::uint32_t render_thread {};
+        std::uint32_t physics_thread{};
+
+        //~ ms
+        float main_thread_ms   {};
+        float render_thread_ms {};
+        float physics_thread_ms{};
+    };
+
+    class engine final
+    {
+    public:
+         engine();
+        ~engine();
+
+        //~ copy restricted
+        engine           (const engine&) = delete;
+        engine& operator=(const engine&) = delete;
+
+        //~ move restricted
+        engine           (engine&&) = delete;
+        engine& operator=(engine&&) = delete;
+
+        //~ life cycle
+        [[nodiscard]] bool initialize() const;
+                      void tick      () const;
+
+        [[nodiscard]] bool            should_close() const noexcept;
+        [[nodiscard]] float           delta_time  () const noexcept;
+        [[nodiscard]] fps_information get_fps     () const noexcept;
+
+    private:
+        struct impl;
+        std::unique_ptr<impl> p_;
+    };
 } // namespace trishul
 
 #endif //CURSEOFTHESEA_ENGINE_H
