@@ -16,19 +16,28 @@
 #include <wrl/client.h>
 #include <windows.h>
 
+#include "trishul/core/interface/hardware.h"
+
 struct ID3D12Fence1;
 struct ID3D12CommandQueue;
 
 namespace trishul::render::hardware
 {
     class device;
+    
+    //~ will be assigned via the renderer at the time of bootstrap
+    struct fence_config
+    {
+        device*       dev          { nullptr };
+        std::uint64_t initial_value{ 0u };
+    };
 
     //~ fence cpu gpu and cross queue sync
-    class fence final
+    class fence final: public interfaces
     {
     public:
          fence() = default;
-        ~fence();
+        ~fence() override;
 
         fence(const fence&) = delete;
         fence(fence&&)      = delete;
@@ -36,15 +45,24 @@ namespace trishul::render::hardware
         fence& operator=(const fence&) = delete;
         fence& operator=(fence&&)      = delete;
 
-        //~ lifecycle initialize is idempotent and also rebuilds after a gpu swap
+        //~ lifecycle initialize, idempotent
+        //~ and also rebuilds itself after a gpu swap
         [[nodiscard]]
-        bool initialize  (const device& dev, std::uint64_t initial_value = 0u);
-        void deinitialize() noexcept;
+        bool initialize  ()          override;
+        void deinitialize() noexcept override;
+
+        [[nodiscard]] const char* name() const noexcept override { return "fence"; }
 
         //~ true when the device changed!
-        bool need_rebuild() const noexcept
+        bool need_rebuild() const noexcept override
         {
             return need_rebuild_.load(std::memory_order_acquire);
+        }
+
+        //~ flag a rebuild
+        void mark_for_rebuild() noexcept
+        {
+            need_rebuild_.store(true, std::memory_order_release);
         }
 
         //~ returns the value reached once the gpu finishes prior work

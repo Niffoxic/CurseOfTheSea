@@ -177,9 +177,18 @@ adapter_info device::describe_adapter(
     return info;
 }
 
-bool device::initialize(const device_create_info &info)
+bool device::initialize()
 {
-    if (initialized_) return true;
+    //~ already up only rebuild when something flagged
+    if (initialized_)
+    {
+        if (not need_rebuild_.load(std::memory_order_acquire)) return true;
+        return recreate(); //~ reuses last_info_ and clears the flag on success
+    }
+
+    //~ fetch the config
+    const auto* cfg = config_as<device_create_info>();
+    const device_create_info info = cfg ? *cfg : device_create_info{};
 
 #if COTS_GFX_DEBUG
     enable_debug_layer();
@@ -208,6 +217,7 @@ bool device::initialize(const device_create_info &info)
 
         initialized_ = true;
         last_info_   = info;
+        need_rebuild_.store(false, std::memory_order_release);
 
         LOG_INFO("initialized on {} ({} MB VRAM) feature level {}",
             adapter_info_.name,
@@ -294,6 +304,7 @@ bool device::recreate(const device_create_info& info) noexcept
         }
 
         last_info_ = info;
+        need_rebuild_.store(false, std::memory_order_release);
         events::publish_threadsafe<events::device_recreated>(
             adapter_info_.adapter_index);
         LOG_INFO("recreated device on {} feature level {}",
@@ -312,6 +323,16 @@ bool device::recreate(const device_create_info& info) noexcept
 bool device::recreate()
 {
     return recreate(last_info_);
+}
+
+bool device::need_rebuild() const noexcept
+{
+    return need_rebuild_.load(std::memory_order_acquire);
+}
+
+void device::mark_for_rebuild() noexcept
+{
+    need_rebuild_.store(true, std::memory_order_release);
 }
 
 bool device::check_device_removed() const

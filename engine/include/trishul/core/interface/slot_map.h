@@ -11,7 +11,6 @@
 #ifndef CURSEOFTHESEA_SLOT_MAP_H
 #define CURSEOFTHESEA_SLOT_MAP_H
 
-
 #include <cstdint>
 #include <optional>
 #include <utility>

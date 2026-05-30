@@ -25,19 +25,22 @@ render::hardware::fence::~fence()
     deinitialize();
 }
 
-bool render::hardware::fence::initialize(
-    const device& dev,
-    const std::uint64_t initial_value)
+bool render::hardware::fence::initialize()
 {
     if (not need_rebuild_.load(std::memory_order_acquire)) return true; //~ already built
 
-    auto* d3d = dev.d3d12_device();
+    //~ pull the pod the handler set
+    const auto* cfg = config_as<fence_config>();
+    ENGINE_ASSERT_MSG(cfg,      "fence config missing call set_config<fence_config> first!");
+    ENGINE_ASSERT_MSG(cfg->dev, "fence config device pointer is null");
+
+    auto* d3d = cfg->dev->d3d12_device();
     ENGINE_ASSERT_MSG(d3d, "Cant create fence probably device is not created! or nullptr");
 
     //~ on a rebuild continue the timeline so the old values stay completed otherwise
     //~ the cpu could wait forever for a value the new gpu will never reach
     const std::uint64_t create_value = first_init_
-        ? initial_value
+        ? cfg->initial_value
         : last_signaled_.load(std::memory_order_relaxed);
 
     //~ building into a temp so a failed create does not wipe a working fence
@@ -73,7 +76,7 @@ bool render::hardware::fence::initialize(
 
     if (first_init_)
     {
-        last_signaled_.store(initial_value, std::memory_order_release);
+        last_signaled_.store(cfg->initial_value, std::memory_order_release);
         subscribe_events();
         first_init_ = false;
     }
@@ -235,5 +238,5 @@ void render::hardware::fence::unsubscribe_events()
 void render::hardware::fence::event_device_created()
 {
     //~ runs on the dispatcher thread just flag it the owner rebuilds us
-    need_rebuild_.store(true, std::memory_order_release);
+    mark_for_rebuild();
 }

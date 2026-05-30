@@ -22,8 +22,10 @@
 
 #include "trishul/utils/logger.h"
 
-//~ hardwares
+//~ hardware
+#include "trishul/core/dependency_handler.h"
 #include "trishul/renderer/hardware/device.h"
+#include "trishul/renderer/hardware/fence.h"
 
 using namespace trishul::render;
 
@@ -54,7 +56,11 @@ struct graphics::impl
     //~ device fired the gpu came back possibly on a different adapter
     void on_device_recreated(const events::device_recreated& event);
 
-    //~ display settings render thread side
+    //~ device vanished I will try to rebuild but its unsafe!
+    void on_device_lost(const events::device_lost& event);
+
+    //~ hardware lifecycle render thread side
+    void rebuild_hardware      ();  //~ reinit any child that raised need_rebuild
     void build_capabilities    ();  //~ device into a pod snapshot
     void apply_display_settings(const display_settings& settings);
 
@@ -73,7 +79,9 @@ struct graphics::impl
     std::atomic<std::uint32_t> warming_step_   { 0u };
 
     //~ hardware
+    dependency_handler<hardware::interfaces> hardware_handler_{};
     hardware::device device_{};
+    hardware::fence fence_  {};
 
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
@@ -139,9 +147,15 @@ void graphics::deinitialize() noexcept
         render_thread_.join();
     }
 
-    //~ thread is dead now safe to drop subscriptions and the device
+    //~ thread is dead now safe to drop subscriptions and tear hardware down
     render_->unsubscribe_events();
-    render_->device_.deinitialize();
+
+    //~ deintialize whole hardwares
+    for (auto it = render_->hardware_handler_.rbegin();
+         it != render_->hardware_handler_.rend(); ++it)
+    {
+        if (*it) (*it)->deinitialize();
+    }
 }
 
 void graphics::begin_update(float dt)
@@ -251,11 +265,30 @@ bool graphics::impl::init_bootstrap()
     device_info.flags             = DXGI_ADAPTER_FLAG_SOFTWARE;
     device_info.preference        = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
     device_info.min_feature_level = D3D_FEATURE_LEVEL_12_0; //~ thats the lowest
+    device_.set_config(device_info);
 
-    if (not device_.initialize(device_info))
+    //~ fence builds on the device and continues its timeline across swaps
+    hardware::fence_config fence_info{};
+    fence_info.dev           = &device_;
+    fence_info.initial_value = 0u;
+    fence_.set_config(fence_info);
+
+    //~ register each hardware to the handler
+    hardware_handler_.register_type(&device_);
+    hardware_handler_.register_type(&fence_);
+    
+    //~ build dependencies betweem hardwares
+    hardware_handler_.add_dependency<hardware::fence, hardware::device>();
+
+    //~ initialize in correct order
+    for (auto* hw : hardware_handler_)
     {
-        LOG_CRITICAL("Failed to Create DirectX Device!");
-        return false;
+        if (not hw->initialize())
+        {
+            LOG_CRITICAL("hardware '{}' failed to initialize", hw->name());
+            return false;
+        }
+        LOG_INFO("hardware '{}' online", hw->name());
     }
 
     //~ seed what we actually landed on then publish the first snapshot
@@ -317,7 +350,24 @@ void graphics::impl::process_pending_events()
         rebuild_caps = true;
     }
 
+    //~ reinitialize any hardware that raised need_rebuild
+    rebuild_hardware();
+
     if (rebuild_caps) build_capabilities();
+}
+
+void graphics::impl::rebuild_hardware()
+{
+    //~ parent to child order so a device rebuild lands before its dependents
+    for (auto* hw : hardware_handler_)
+    {
+        if (not hw->need_rebuild()) continue;
+
+        if (hw->initialize())
+            LOG_INFO("hardware '{}' rebuilt", hw->name());
+        else
+            LOG_ERROR("hardware '{}' rebuild failed", hw->name());
+    }
 }
 
 void graphics::impl::subscribe_events()
@@ -328,6 +378,7 @@ void graphics::impl::subscribe_events()
     d->subscribe<events::window_resized,         &impl::on_window_resized  >(*this);
     d->subscribe<events::window_display_changed, &impl::on_display_changed >(*this);
     d->subscribe<events::device_recreated,       &impl::on_device_recreated>(*this);
+    d->subscribe<events::device_lost,            &impl::on_device_lost     >(*this);
 }
 
 void graphics::impl::unsubscribe_events()
@@ -338,6 +389,7 @@ void graphics::impl::unsubscribe_events()
     d->unsubscribe<events::window_resized,         &impl::on_window_resized  >(*this);
     d->unsubscribe<events::window_display_changed, &impl::on_display_changed >(*this);
     d->unsubscribe<events::device_recreated,       &impl::on_device_recreated>(*this);
+    d->unsubscribe<events::device_lost,            &impl::on_device_lost     >(*this);
 }
 
 void graphics::impl::on_window_resized(const events::window_resized &event)
@@ -355,6 +407,11 @@ void graphics::impl::on_device_recreated(const events::device_recreated &event)
 {
     //~ runs on the dispatcher thread render thread re stamps the caps snapshot
     caps_dirty_.store(true, std::memory_order_release);
+}
+
+void graphics::impl::on_device_lost(const events::device_lost &event)
+{
+    device_.mark_for_rebuild();
 }
 
 void graphics::impl::build_capabilities()

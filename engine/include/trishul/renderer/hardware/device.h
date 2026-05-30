@@ -13,6 +13,7 @@
 
 #include "trishul/core/engine_config.h"
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -22,6 +23,8 @@
 //~ itself is an impl idiom
 #include <d3d12.h>
 #include <dxgi1_6.h>
+
+#include "trishul/core/interface/hardware.h"
 
 namespace D3D12MA { class Allocator; }
 
@@ -88,11 +91,11 @@ namespace trishul::render::hardware
         D3D_FEATURE_LEVEL min_feature_level { D3D_FEATURE_LEVEL_12_0 };
     };
 
-    class device final
+    class device final: public interfaces
     {
     public:
          device() = default;
-        ~device();
+        ~device() override;
 
         device(const device&) noexcept = delete;
         device(device&&)      noexcept = delete;
@@ -102,8 +105,14 @@ namespace trishul::render::hardware
 
         //~ lifecycle
         [[nodiscard]]
-        bool initialize  (const device_create_info& info = {});
-        void deinitialize() noexcept;
+        bool initialize  ()          override;
+        void deinitialize() noexcept override;
+
+        [[nodiscard]] bool        need_rebuild() const noexcept override;
+        [[nodiscard]] const char* name        () const noexcept override { return "device"; }
+
+        //~ flag a rebuild
+        void mark_for_rebuild() noexcept;
 
         //~ flag to recreate if d3d12 driver corrupted (dont recall the precise error
         //~ but thats annoying for debug and also using this for fullscreen swaps)
@@ -184,6 +193,7 @@ namespace trishul::render::hardware
 
         //~ status info
         bool initialized_           { false };
+        std::atomic<bool> need_rebuild_{ false }; //~ set on device lost cleared on recreate
         std::uint32_t created_times_{ 0u }; //~ to debug aggresive creation
     };
 
