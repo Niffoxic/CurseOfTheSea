@@ -43,6 +43,15 @@ namespace trishul::events
         std::int32_t y;
     };
 
+    //~ display topology or resolution changed renderer should rescan outputs!
+    struct window_display_changed {};
+
+    //~ per monitor dpi changed like could be dragged to another screen or something
+    struct window_dpi_changed
+    {
+        std::uint32_t dpi;
+    };
+
     //~ user asked to close
     struct window_closed {};
 } // namespace trishul::events

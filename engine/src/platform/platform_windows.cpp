@@ -413,6 +413,26 @@ namespace trishul
             events::publish<events::window_focus_changed>(focused);
             return 0;
         }
+        case WM_DISPLAYCHANGE:
+            //~ monitor added removed or mode changed let the renderer rescan!
+            // never gonna need it but what if xD
+            events::publish<events::window_display_changed>();
+            return DefWindowProcW(hwnd, message, w_param, l_param);
+        case WM_DPICHANGED:
+        {
+            //~ focus on the suggested rect first then notify
+            if (const auto* suggested = reinterpret_cast<const RECT*>(l_param))
+            {
+                SetWindowPos(hwnd, nullptr,
+                    suggested->left, suggested->top,
+                    suggested->right  - suggested->left,
+                    suggested->bottom - suggested->top,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            events::publish<events::window_dpi_changed>(
+                static_cast<std::uint32_t>(HIWORD(w_param)));
+            return 0;
+        }
         case WM_DESTROY:
             status_ = platform_status::Quit;
             events::publish<events::window_closed>();

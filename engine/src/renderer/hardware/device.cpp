@@ -20,9 +20,16 @@
 
 #include "trishul/utils/statics.h"
 
+//~ debug layer and info queue
+#if COTS_DEBUG || COTS_RELWITHDEBINFO
+#   define COTS_GFX_DEBUG 1
+#else
+#   define COTS_GFX_DEBUG 0
+#endif
+
 namespace //~ niffoxic reusable device debug chunk
 {
-#if COTS_DEBUG
+#if COTS_GFX_DEBUG
     void enable_debug_layer()
     {
         Microsoft::WRL::ComPtr<ID3D12Debug6> debug;
@@ -35,7 +42,7 @@ namespace //~ niffoxic reusable device debug chunk
         LOG_INFO("D3D12 debug layer enabled");
 
 #if COTS_GPU_VALIDATION_ENABLED
-        //~ gpu based validation is slow but needed fpr catching descriptor
+        //~ gpu based validation is slow but needed for catching descriptor
         // heap and resource issues
         debug->SetEnableGPUBasedValidation(TRUE);
         LOG_INFO("D3D12 GPU based validation enabled");
@@ -50,7 +57,7 @@ namespace //~ niffoxic reusable device debug chunk
         Microsoft::WRL::ComPtr<ID3D12DeviceRemovedExtendedDataSettings1> dred;
         if (FAILED(D3D12GetDebugInterface(IID_PPV_ARGS(&dred))))
         {
-           LOG_WARN("RED settings interface unavailable");
+            LOG_WARN("DRED settings interface unavailable");
             return;
         }
         dred->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
@@ -58,7 +65,8 @@ namespace //~ niffoxic reusable device debug chunk
         LOG_INFO("DRED breadcrumbs and page fault enabled");
     }
 #endif
-     void install_info_queue_filters(ID3D12InfoQueue1* iq)
+
+    void install_info_queue_filters(ID3D12InfoQueue1* iq)
     {
         (void)iq->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
         (void)iq->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR,      TRUE);
@@ -106,6 +114,46 @@ namespace //~ niffoxic reusable device debug chunk
         default:                                            return "Op";
         }
     }
+
+    const char* feature_level_name(const D3D_FEATURE_LEVEL level) noexcept
+    {
+        switch (level)
+        {
+        case D3D_FEATURE_LEVEL_12_2: return "12_2";
+        case D3D_FEATURE_LEVEL_12_1: return "12_1";
+        case D3D_FEATURE_LEVEL_12_0: return "12_0";
+        case D3D_FEATURE_LEVEL_11_1: return "11_1";
+        case D3D_FEATURE_LEVEL_11_0: return "11_0";
+        default:                     return "unknown";
+        }
+    }
+
+    //~ just for testing probe if works potentially can use this adapter
+    bool supports_feature_level(
+        IDXGIAdapter1* adapter, const D3D_FEATURE_LEVEL level) noexcept
+    {
+        return SUCCEEDED(D3D12CreateDevice(
+            adapter, level, __uuidof(ID3D12Device), nullptr));
+    }
+
+    //~ highest level at or above minimum else zero 
+    D3D_FEATURE_LEVEL highest_feature_level(
+        IDXGIAdapter1* adapter, const D3D_FEATURE_LEVEL minimum) noexcept
+    {
+        if (!adapter) return static_cast<D3D_FEATURE_LEVEL>(0);
+
+        constexpr D3D_FEATURE_LEVEL levels[] = {
+            D3D_FEATURE_LEVEL_12_2,
+            D3D_FEATURE_LEVEL_12_1,
+            D3D_FEATURE_LEVEL_12_0,
+        };
+        for (const D3D_FEATURE_LEVEL level : levels)
+        {
+            if (level < minimum)                        break;
+            if (supports_feature_level(adapter, level)) return level;
+        }
+        return static_cast<D3D_FEATURE_LEVEL>(0);
+    }
 } // anonymous namespace
 
 using namespace trishul::render::hardware;
@@ -115,15 +163,29 @@ device::~device()
     deinitialize();
 }
 
+adapter_info device::describe_adapter(
+    const DXGI_ADAPTER_DESC1& desc, const std::uint32_t index)
+{
+    adapter_info info{};
+    info.name                   = statics::wide_to_utf8(desc.Description);
+    info.adapter_index          = index;
+    info.vendor_id              = desc.VendorId;
+    info.device_id              = desc.DeviceId;
+    info.dedicated_video_memory = desc.DedicatedVideoMemory;
+    info.shared_memory          = desc.SharedSystemMemory;
+    info.is_wrap                = (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0;
+    return info;
+}
+
 bool device::initialize(const device_create_info &info)
 {
     if (initialized_) return true;
 
-#if defined(COTS_DEBUG) || defined(COTS_RELWITHDEBINFO)
+#if COTS_GFX_DEBUG
     enable_debug_layer();
     constexpr UINT factory_flags = DXGI_CREATE_FACTORY_DEBUG;
 #else
-    constexpr UINT factory_flags = 0;
+    constexpr UINT factory_flags = 0u;
 #endif
 
 #if COTS_DRED_ENABLED
@@ -134,9 +196,9 @@ bool device::initialize(const device_create_info &info)
     {
         DX_THROW_IF_FAILED_MSG(
             CreateDXGIFactory2(factory_flags, IID_PPV_ARGS(&factory_)),
-            "CreateDXGIFactory2");
+            "Failed to create Factory which is quite rare! cant solve it sorry");
 
-        enumerate_adapters(DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, adapters_info_);
+        refresh_adapters();
 
         if (!create_internal(info))
         {
@@ -147,9 +209,13 @@ bool device::initialize(const device_create_info &info)
         initialized_ = true;
         last_info_   = info;
 
-        LOG_INFO("initialized on {} ({} MB VRAM)",
+        LOG_INFO("initialized on {} ({} MB VRAM) feature level {}",
             adapter_info_.name,
-            adapter_info_.dedicated_video_memory / (1024 * 1024));
+            adapter_info_.dedicated_video_memory / (1024ull * 1024ull),
+            feature_level_name(feature_level_));
+
+        events::publish_threadsafe<events::device_initialized>(
+            adapter_info_.adapter_index);
         return true;
     }
     catch (const exception::directx& e)
@@ -162,7 +228,7 @@ bool device::initialize(const device_create_info &info)
 
 void device::deinitialize() noexcept
 {
-    if (!initialized_ && !device_) return;
+    if (!initialized_ && !device_ && !factory_) return;
 
 #if COTS_DEBUG
     //~ before tearing the allocator dump anything d3d12ma
@@ -183,8 +249,10 @@ void device::deinitialize() noexcept
 
     factory_.Reset();
     adapters_info_.clear();
-    adapter_info_ = {};
-    initialized_  = false;
+    outputs_info_ .clear();
+    adapter_info_  = {};
+    feature_level_ = D3D_FEATURE_LEVEL_12_0;
+    initialized_   = false;
 
 #if COTS_DEBUG
     Microsoft::WRL::ComPtr<IDXGIDebug1> dxgi_debug;
@@ -212,23 +280,31 @@ bool device::recreate(const device_create_info& info) noexcept
     events::publish_threadsafe<events::device_recreating>();
     destroy_internal();
 
+    //~ adapter set may have shifted gpu reset
+    refresh_adapters();
+
     try
     {
         if (not create_internal(info))
         {
             LOG_ERROR("failed to recreate internal device");
+            destroy_internal();
+            events::publish_threadsafe<events::device_recreate_failed>();
             return false;
         }
 
         last_info_ = info;
         events::publish_threadsafe<events::device_recreated>(
             adapter_info_.adapter_index);
-        LOG_INFO("recreated device on {}", adapter_info_.name);
+        LOG_INFO("recreated device on {} feature level {}",
+            adapter_info_.name, feature_level_name(feature_level_));
         return true;
     }
     catch (const exception::directx& e)
     {
         LOG_ERROR("Failed to recreate device exception: {}", e.what());
+        destroy_internal();
+        events::publish_threadsafe<events::device_recreate_failed>();
         return false;
     }
 }
@@ -340,7 +416,7 @@ void device::dump_device_removed() const
     }
     else
     {
-       LOG_ERROR("GetPageFaultAllocationOutput2 failed");
+       LOG_ERROR("GetPageFaultAllocationOutput1 failed");
     }
 #endif
 }
@@ -362,7 +438,7 @@ ID3D12CommandQueue * device::graphics_queue() const noexcept
 
 ID3D12CommandQueue * device::compute_queue() const noexcept
 {
-    return copy_queue_.Get();
+    return compute_queue_.Get();
 }
 
 ID3D12CommandQueue * device::copy_queue() const noexcept
@@ -373,6 +449,11 @@ ID3D12CommandQueue * device::copy_queue() const noexcept
 D3D12MA::Allocator* device::allocator() const noexcept
 {
     return allocator_;
+}
+
+D3D_FEATURE_LEVEL device::feature_level() const noexcept
+{
+    return feature_level_;
 }
 
 const adapter_info & device::current_adapter_info() const noexcept
@@ -394,28 +475,63 @@ void device::refresh_outputs()
 {
     if (not adapter_) return;
     enumerate_outputs();
+    events::publish_threadsafe<events::outputs_changed>(
+        static_cast<std::uint32_t>(outputs_info_.size()));
 }
 
 bool device::create_internal(const device_create_info &info)
 {
     LOG_INFO("Created Internal called {} times", ++created_times_);
 
-    if (not pick_adapter(info, adapter_))
+    adapter_selection selection;
+    if (not pick_adapter(info, selection))
     {
         LOG_ERROR("Failed to pick any suitable adapter!");
         return false;
     }
 
+    adapter_       = selection.adapter;
+    feature_level_ = selection.feature_level;
+
     DX_THROW_IF_FAILED_MSG(
-        D3D12CreateDevice(adapter_.Get(), D3D_FEATURE_LEVEL_12_0,
+        D3D12CreateDevice(adapter_.Get(), feature_level_,
             IID_PPV_ARGS(&device_)),
         "Failed to create device which is near impossible btw until less its XP!");
 
     (void)device_->SetName(L"COTS Device");
 
-    //~ requires enhanced barriers
+    //~ info queue first so the feature probes and queue setup get filtered
+    if (SUCCEEDED(device_->QueryInterface(IID_PPV_ARGS(&info_queue_))))
     {
-        D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12{};
+        install_info_queue_filters(info_queue_.Get());
+    }
+
+    //~ hard requirements enhanced barriers sm 6.6 bindless
+    if (not verify_device_features())
+    {
+        return false;
+    }
+
+    //~ record the chosen adapter
+    DXGI_ADAPTER_DESC1 desc{};
+    (void)adapter_->GetDesc1(&desc);
+    adapter_info_         = describe_adapter(desc, selection.adapter_index);
+    adapter_info_.is_wrap = selection.is_warp;
+    adapter_info_.adapter = adapter_;
+
+    enumerate_outputs();
+
+    if (not create_command_queues()) return false;
+    if (not create_allocator())      return false;
+
+    return true;
+}
+
+bool device::verify_device_features() const
+{
+    //~ requires enhanced barriers
+    D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12{};
+    {
         const HRESULT hr = device_->CheckFeatureSupport(
             D3D12_FEATURE_D3D12_OPTIONS12, &options12, sizeof(options12));
 
@@ -430,13 +546,13 @@ bool device::create_internal(const device_create_info &info)
         LOG_INFO("enhanced barriers supported");
     }
 
-    //~ requires bindless
+    //~ requires shader model 6.6 for bindless dynamic resources
+    D3D12_FEATURE_DATA_SHADER_MODEL sm{ D3D_SHADER_MODEL_6_6 };
     {
-        D3D12_FEATURE_DATA_SHADER_MODEL sm{ D3D_SHADER_MODEL_6_6 };
-        const HRESULT hr_sm = device_->CheckFeatureSupport(
+        const HRESULT hr = device_->CheckFeatureSupport(
             D3D12_FEATURE_SHADER_MODEL, &sm, sizeof(sm));
 
-        if (FAILED(hr_sm) || sm.HighestShaderModel < D3D_SHADER_MODEL_6_6)
+        if (FAILED(hr) || sm.HighestShaderModel < D3D_SHADER_MODEL_6_6)
         {
             LOG_ERROR(
                 "shader model 6.6 required but only "
@@ -444,12 +560,15 @@ bool device::create_internal(const device_create_info &info)
                 static_cast<std::uint32_t>(sm.HighestShaderModel));
             return false;
         }
+    }
 
-        D3D12_FEATURE_DATA_D3D12_OPTIONS options{};
-        const HRESULT hr_o = device_->CheckFeatureSupport(
+    //~ requires resource binding tier three for bindless
+    D3D12_FEATURE_DATA_D3D12_OPTIONS options{};
+    {
+        const HRESULT hr = device_->CheckFeatureSupport(
             D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof(options));
 
-        if (FAILED(hr_o) ||
+        if (FAILED(hr) ||
             options.ResourceBindingTier < D3D12_RESOURCE_BINDING_TIER_3)
         {
             LOG_ERROR(
@@ -458,71 +577,54 @@ bool device::create_internal(const device_create_info &info)
                 static_cast<int>(options.ResourceBindingTier));
             return false;
         }
-        LOG_INFO("sm 6.6 and bindless supported");
     }
 
-    //~ fill adapter info TODO: too many repeated codes
-    DXGI_ADAPTER_DESC3 desc{};
-    adapter_->GetDesc3(&desc);
+    LOG_INFO("sm 6.6 and bindless supported");
+    return true;
+}
 
-    adapter_info_.name                   = statics::wide_to_utf8(desc.Description);
-    adapter_info_.vendor_id              = desc.VendorId;
-    adapter_info_.device_id              = desc.DeviceId;
-    adapter_info_.dedicated_video_memory = desc.DedicatedVideoMemory;
-    adapter_info_.shared_memory          = desc.SharedSystemMemory;
-    adapter_info_.is_wrap                = (desc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE) != 0;
-    adapter_info_.adapter_index          = (info.manual) ? info.adapter_index : 0; // TODO: TOO RISKY for fallback!
-    adapter_info_.adapter = adapter_;
-
-    enumerate_outputs();
-
-    //~ info queue
-    if (SUCCEEDED(device_->QueryInterface(IID_PPV_ARGS(&info_queue_))))
+bool device::create_command_queues()
+{
+    struct queue_def
     {
-        install_info_queue_filters(info_queue_.Get());
+        D3D12_COMMAND_LIST_TYPE                     type;
+        D3D12_COMMAND_QUEUE_PRIORITY                priority;
+        const wchar_t*                              name;
+        Microsoft::WRL::ComPtr<ID3D12CommandQueue>* slot;
+    };
+
+    const queue_def defs[] =
+    {
+        { D3D12_COMMAND_LIST_TYPE_DIRECT,  D3D12_COMMAND_QUEUE_PRIORITY_HIGH,
+          L"COTS Graphics Queue",      &graphics_queue_ },
+        { D3D12_COMMAND_LIST_TYPE_COMPUTE, D3D12_COMMAND_QUEUE_PRIORITY_NORMAL,
+          L"COTS Async Compute Queue", &compute_queue_  },
+        { D3D12_COMMAND_LIST_TYPE_COPY,    D3D12_COMMAND_QUEUE_PRIORITY_NORMAL,
+          L"COTS Copy Queue",          &copy_queue_     },
+    };
+
+    for (const queue_def& def : defs)
+    {
+        D3D12_COMMAND_QUEUE_DESC queue_desc{};
+        queue_desc.Type     = def.type;
+        queue_desc.Priority = def.priority;
+        queue_desc.Flags    = D3D12_COMMAND_QUEUE_FLAG_NONE;
+        queue_desc.NodeMask = 0;
+
+        DX_THROW_IF_FAILED_MSG(
+            device_->CreateCommandQueue(
+                &queue_desc, IID_PPV_ARGS(def.slot->ReleaseAndGetAddressOf())),
+            "Failed to create command queue");
+
+        (void)(*def.slot)->SetName(def.name);
     }
 
-     //~ graphics queue
-    D3D12_COMMAND_QUEUE_DESC queue_desc{};
-    queue_desc.Type     = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    queue_desc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_HIGH;
-    queue_desc.Flags    = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    queue_desc.NodeMask = 0;
+    LOG_INFO("created three queues (graphics + async compute + copy)");
+    return true;
+}
 
-    DX_THROW_IF_FAILED_MSG(
-        device_->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&graphics_queue_)),
-        "Failed to create graphics_queue_");
-
-    (void)graphics_queue_->SetName(L"COTS Graphics Queue");
-
-    //~ needed for concurrent fft, shadows calc etc...
-    D3D12_COMMAND_QUEUE_DESC compute_desc{};
-    compute_desc.Type     = D3D12_COMMAND_LIST_TYPE_COMPUTE;
-    compute_desc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
-    compute_desc.Flags    = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    compute_desc.NodeMask = 0;
-
-    DX_THROW_IF_FAILED_MSG(
-        device_->CreateCommandQueue(&compute_desc, IID_PPV_ARGS(&compute_queue_)),
-        "failed to create compute_queue_");
-
-    (void)compute_queue_->SetName(L"COTS Async Compute Queue");
-
-    D3D12_COMMAND_QUEUE_DESC copy_desc{};
-    copy_desc.Type     = D3D12_COMMAND_LIST_TYPE_COPY;
-    copy_desc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
-    copy_desc.Flags    = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    copy_desc.NodeMask = 0;
-
-    DX_THROW_IF_FAILED_MSG(
-        device_->CreateCommandQueue(&copy_desc, IID_PPV_ARGS(&copy_queue_)),
-        "failed to create copy_queue_");
-
-    (void)copy_queue_->SetName(L"COTS Copy Queue");
-
-   LOG_INFO("created three queues (graphics + async compute + copy)");
-
-    //~ create memory allocator
+bool device::create_allocator()
+{
     D3D12MA::ALLOCATOR_DESC alloc_desc{};
     alloc_desc.pDevice  = device_.Get();
     alloc_desc.pAdapter = adapter_.Get();
@@ -561,32 +663,29 @@ void device::enumerate_adapters(
     out.clear();
 
     Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter{};
-    UINT adapter_index = 0u;
-    while (SUCCEEDED(factory_->EnumAdapterByGpuPreference(
-        adapter_index, pref,
-        IID_PPV_ARGS(&adapter))))
+
+    for (UINT adapter_index = 0u;
+         SUCCEEDED(factory_->EnumAdapterByGpuPreference(
+             adapter_index, pref, IID_PPV_ARGS(&adapter)));
+         ++adapter_index)
     {
         DXGI_ADAPTER_DESC1 desc{};
-        (void)adapter->GetDesc1(&desc);
-
-        if (desc.Flags & flags)
+        if (FAILED(adapter->GetDesc1(&desc)))
         {
             adapter.Reset();
             continue;
         }
 
-        adapter_info entry{};
-        entry.name                   = statics::wide_to_utf8(desc.Description);
-        entry.adapter_index          = adapter_index;
-        entry.vendor_id              = desc.VendorId;
-        entry.device_id              = desc.DeviceId;
-        entry.dedicated_video_memory = desc.DedicatedVideoMemory;
-        entry.shared_memory          = desc.SharedSystemMemory;
-        entry.is_wrap                = (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0;
-        entry.adapter = std::move(adapter);
-        out.push_back(std::move(entry));
+        if (desc.Flags & flags) //~ excluding whatever it is mostly software tho
+        {
+            adapter.Reset();
+            continue;
+        }
 
-        adapter_index++;
+        adapter_info entry = describe_adapter(desc, adapter_index);
+        entry.adapter      = std::move(adapter);
+        out.push_back(std::move(entry));
+        adapter.Reset();
     }
 }
 
@@ -595,19 +694,26 @@ void device::enumerate_outputs()
     ENGINE_ASSERT_MSG(factory_, "Factory is not initialized");
     ENGINE_ASSERT_MSG(adapter_, "Adapter is not initialized");
 
+    //~ rebuild from scratch so refresh and recreate dont stack duplicates
+    outputs_info_.clear();
+
     const auto collect_from = [this](IDXGIAdapter1* adapter) -> std::uint32_t
     {
+        if (!adapter) return 0u;
+
         std::uint32_t added{};
         Microsoft::WRL::ComPtr<IDXGIOutput> output{};
-        std::uint32_t output_index{};
 
-        while (SUCCEEDED(adapter->EnumOutputs(output_index, &output)))
+        for (UINT output_index = 0u;
+             SUCCEEDED(adapter->EnumOutputs(output_index, &output));
+             ++output_index)
         {
-            output_index++;
             Microsoft::WRL::ComPtr<IDXGIOutput6> output6{};
             if (FAILED(output.As(&output6)))
             {
+                //~ no output6 cannot describe it skip...
                 output.Reset();
+                continue;
             }
 
             DXGI_OUTPUT_DESC1 desc{};
@@ -626,13 +732,13 @@ void device::enumerate_outputs()
                 desc.DesktopCoordinates.right - desc.DesktopCoordinates.left);
             entry.desktop_height = static_cast<std::uint32_t>(
                 desc.DesktopCoordinates.bottom - desc.DesktopCoordinates.top);
+            entry.is_primary     = (entry.desktop_left == 0 && entry.desktop_top == 0);
 
-            //~ supported modes
+            //~ supported modes ascending so back is the richest mode
             constexpr DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM;
             UINT mode_count = 0;
-            output6->GetDisplayModeList1(format, 0u, &mode_count, nullptr);
-
-            if (mode_count)
+            if (SUCCEEDED(output6->GetDisplayModeList1(
+                    format, 0u, &mode_count, nullptr)) && mode_count)
             {
                 std::vector<DXGI_MODE_DESC1> modes(mode_count);
                 if (SUCCEEDED(output6->GetDisplayModeList1(
@@ -648,11 +754,10 @@ void device::enumerate_outputs()
                             mode.RefreshRate.Denominator,
                         });
                     }
-                    entry.native_mode = entry.supported_modes.back();
+                    if (!entry.supported_modes.empty())
+                        entry.native_mode = entry.supported_modes.back();
                 }
             }
-
-            entry.is_primary = (entry.desktop_left == 0 && entry.desktop_top == 0);
 
             outputs_info_.push_back(std::move(entry));
             ++added;
@@ -668,9 +773,15 @@ void device::enumerate_outputs()
     if (outputs_info_.empty())
     {
         LOG_WARN("Laptop detected!");
-        MessageBoxA(nullptr,
-            "Respectfully play my game on your PC!",
-            "YO! PROFESSOR? PLAYING ON A LAPTOP!?", MB_OK);
+
+        static bool nagged = false;
+        if (!nagged)
+        {
+            nagged = true;
+            MessageBoxA(nullptr,
+                "Respectfully play my game on your PC!",
+                "YO! PROFESSOR? PLAYING ON A LAPTOP!?", MB_OK);
+        }
 
         std::vector<adapter_info> request_adapters;
         enumerate_adapters(
@@ -679,17 +790,15 @@ void device::enumerate_outputs()
             DXGI_ADAPTER_FLAG_SOFTWARE //~ dont need that
         );
 
-        for (auto& adapter_info : request_adapters)
+        for (auto& other : request_adapters)
         {
-            if (const auto counts = collect_from(adapter_info.adapter.Get());
+            if (const auto counts = collect_from(other.adapter.Get());
                 counts > 0u)
             {
-                DXGI_ADAPTER_DESC1 desc{};
-                (void)adapter_info.adapter->GetDesc1(&desc);
                 LOG_INFO("found {} output(s) on adapter '{}'",
-                    counts, statics::wide_to_utf8(desc.Description));
+                    counts, other.name);
             }
-            adapter_info.release();
+            other.release();
         }
     }
 
@@ -704,46 +813,81 @@ void device::enumerate_outputs()
     }
 }
 
-bool device::pick_adapter(const device_create_info &info, Microsoft::WRL::ComPtr<IDXGIAdapter4> &out) const
+bool device::pick_adapter(const device_create_info &info, adapter_selection &out) const
 {
     ENGINE_ASSERT_MSG(factory_, "Factory isnt initialized!");
-    out.Reset();
+    out = {};
 
-    if (info.manual) //~ fallbacks to the default!
+    const D3D_FEATURE_LEVEL minimum = info.min_feature_level;
+
+    //~ manual target validate it then fall through to auto
+    if (info.manual)
     {
-        Microsoft::WRL::ComPtr<IDXGIAdapter1> a;
-        if (FAILED(factory_->EnumAdapterByGpuPreference(
-                info.adapter_index,
-                DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
-                IID_PPV_ARGS(&a))))
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> manual;
+        if (SUCCEEDED(factory_->EnumAdapterByGpuPreference(
+                info.adapter_index, info.preference, IID_PPV_ARGS(&manual))))
         {
-            LOG_ERROR("adapter index {} not found",
-                          info.adapter_index);
-        }else return SUCCEEDED(a.As(&out));
-    }
-
-    std::vector<adapter_info> adapter_infos{};
-    enumerate_adapters(info.preference, adapter_infos, info.flags);
-    Microsoft::WRL::ComPtr<ID3D12Device> test_device;
-
-    // TODO: Fallback for feature level from 12_2 to all the way bottom!
-    for (auto& adapter_info : adapter_infos)
-    {
-        auto* adapter = adapter_info.adapter.Get();
-        if (SUCCEEDED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_2,
-            IID_PPV_ARGS(&test_device))))
-        {
-            return SUCCEEDED(adapter_info.adapter.As(&out));
+            if (const D3D_FEATURE_LEVEL fl = highest_feature_level(manual.Get(), minimum);
+                fl && SUCCEEDED(manual.As(&out.adapter)))
+            {
+                DXGI_ADAPTER_DESC1 desc{};
+                (void)manual->GetDesc1(&desc);
+                out.adapter_index = info.adapter_index;
+                out.feature_level = fl;
+                out.is_warp       = (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0;
+                return true;
+            }
+            LOG_WARN("manual adapter {} below minimum feature level falling back",
+                info.adapter_index);
         }
-        adapter_info.release();
+        else
+        {
+            LOG_ERROR("manual adapter index {} not found falling back",
+                info.adapter_index);
+        }
     }
 
-    if (!info.allow_warp_fallback) return false;
+    //~ auto pick most preferred hardware adapter meeting the minimum
+    std::vector<adapter_info> candidates;
+    enumerate_adapters(info.preference, candidates, info.flags);
+
+    for (adapter_info& candidate : candidates)
+    {
+        if (const D3D_FEATURE_LEVEL fl =
+                highest_feature_level(candidate.adapter.Get(), minimum);
+            fl && SUCCEEDED(candidate.adapter.As(&out.adapter)))
+        {
+            out.adapter_index = candidate.adapter_index;
+            out.feature_level = fl;
+            out.is_warp       = candidate.is_wrap;
+            return true;
+        }
+    }
+
+    //~ warp software rasterizer last resort
+    if (!info.allow_warp_fallback)
+    {
+        LOG_ERROR("no suitable hardware adapter and WARP fallback disabled");
+        return false;
+    }
     LOG_WARN("no hardware adapter falling back to WARP");
 
-   Microsoft::WRL::ComPtr<IDXGIAdapter1> warp;
+    Microsoft::WRL::ComPtr<IDXGIAdapter1> warp;
     if (FAILED(factory_->EnumWarpAdapter(IID_PPV_ARGS(&warp))))
+    {
+        LOG_ERROR("EnumWarpAdapter failed");
         return false;
+    }
 
-    return SUCCEEDED(warp.As(&out));
+    const D3D_FEATURE_LEVEL fl = highest_feature_level(warp.Get(), minimum);
+    if (!fl || FAILED(warp.As(&out.adapter)))
+    {
+        LOG_ERROR("WARP does not meet minimum feature level");
+        return false;
+    }
+
+    out.adapter_index = config::INVALID_INDEX; //~ warp has no real dxgi index
+    out.feature_level = fl;
+    out.is_warp       = true;
+    return true;
 }
