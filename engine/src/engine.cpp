@@ -263,7 +263,8 @@ void engine::impl::compute_fps(const float dt)
         fps_.main_thread_ms = (fps_accum_time_ * 1000.f)
             / static_cast<float>(fps_accum_frames_);
 
-        LOG_TRACE("fps {} {:.3f} ms", fps_.main_thread, fps_.main_thread_ms);
+        const auto message = std::format("fps {} {:.3f} ms", fps_.main_thread, fps_.main_thread_ms);
+        window_->set_debug(message);
 
         fps_accum_time_   = 0.f;
         fps_accum_frames_ = 0u;

@@ -51,6 +51,9 @@ struct graphics::impl
     void on_window_resized (const events::window_resized& event);
     void on_display_changed(const events::window_display_changed& event);
 
+    //~ device fired the gpu came back possibly on a different adapter
+    void on_device_recreated(const events::device_recreated& event);
+
     //~ display settings render thread side
     void build_capabilities    ();  //~ device into a pod snapshot
     void apply_display_settings(const display_settings& settings);
@@ -80,6 +83,7 @@ struct graphics::impl
     display_settings                            desired_settings_ {};
     std::atomic<bool>                           settings_dirty_{ false };
     std::atomic<bool>                           outputs_dirty_ { false };
+    std::atomic<bool>                           caps_dirty_    { false };
 
     //~ render related
     struct
@@ -287,11 +291,13 @@ void graphics::impl::submit_frame(const std::vector<ID3D12CommandList*>& prepare
 
 void graphics::impl::process_pending_events()
 {
+    bool rebuild_caps = false;
+
     //~ monitor got plugged unplugged or changed mode rescan the outputs
     if (outputs_dirty_.exchange(false, std::memory_order_acquire)) //~ very rare what if!
     {
         device_.refresh_outputs();
-        build_capabilities();
+        rebuild_caps = true;
     }
 
     //~ the menu asked for a different gpu monitor or mode
@@ -304,6 +310,14 @@ void graphics::impl::process_pending_events()
         }
         apply_display_settings(desired);
     }
+
+    //~ device_recreated arrived current adapter changed restamp the snapshot
+    if (caps_dirty_.exchange(false, std::memory_order_acquire))
+    {
+        rebuild_caps = true;
+    }
+
+    if (rebuild_caps) build_capabilities();
 }
 
 void graphics::impl::subscribe_events()
@@ -311,8 +325,9 @@ void graphics::impl::subscribe_events()
     auto* d = service_locator::try_get<events::dispatcher>();
     if (not d) return;
 
-    d->subscribe<events::window_resized,         &impl::on_window_resized >(*this);
-    d->subscribe<events::window_display_changed, &impl::on_display_changed>(*this);
+    d->subscribe<events::window_resized,         &impl::on_window_resized  >(*this);
+    d->subscribe<events::window_display_changed, &impl::on_display_changed >(*this);
+    d->subscribe<events::device_recreated,       &impl::on_device_recreated>(*this);
 }
 
 void graphics::impl::unsubscribe_events()
@@ -320,8 +335,9 @@ void graphics::impl::unsubscribe_events()
     auto* d = service_locator::try_get<events::dispatcher>();
     if (not d) return;
 
-    d->unsubscribe<events::window_resized,         &impl::on_window_resized >(*this);
-    d->unsubscribe<events::window_display_changed, &impl::on_display_changed>(*this);
+    d->unsubscribe<events::window_resized,         &impl::on_window_resized  >(*this);
+    d->unsubscribe<events::window_display_changed, &impl::on_display_changed >(*this);
+    d->unsubscribe<events::device_recreated,       &impl::on_device_recreated>(*this);
 }
 
 void graphics::impl::on_window_resized(const events::window_resized &event)
@@ -333,6 +349,12 @@ void graphics::impl::on_display_changed(const events::window_display_changed &ev
 {
     //~ just a flag process message should resolve it in render thread later
     outputs_dirty_.store(true, std::memory_order_release);
+}
+
+void graphics::impl::on_device_recreated(const events::device_recreated &event)
+{
+    //~ runs on the dispatcher thread render thread re stamps the caps snapshot
+    caps_dirty_.store(true, std::memory_order_release);
 }
 
 void graphics::impl::build_capabilities()
@@ -400,14 +422,11 @@ void graphics::impl::apply_display_settings(const display_settings& settings)
     }
 
     //~ output mode fullscreen vsync are swapchain state stored to wire later when I create swapchain
-    {
+    {    //~ caps refresh on a gpu switch rides the device_recreated
         std::lock_guard lock(display_mutex_);
         current_settings_               = settings;
         current_settings_.adapter_index = device_.current_adapter_info().adapter_index;
     }
-
-    //~ adapter or outputs may have moved refresh the menu snapshot
-    build_capabilities();
 }
 
 bool graphics::impl::acquire_snapshot()

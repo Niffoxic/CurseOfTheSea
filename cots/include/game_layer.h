@@ -14,6 +14,7 @@
 #include <gameplay/layer.h>
 
 #include <trishul/event/window_event.h>
+#include <trishul/event/render_event.h>
 
 namespace trishul::events { class dispatcher; }
 
@@ -35,6 +36,10 @@ namespace cots
         void on_window_minimized (const trishul::events::window_minimized&);
         void on_window_restored  (const trishul::events::window_restored&);
         void on_window_closed    (const trishul::events::window_closed&);
+
+        //~ gpu switch test feedback
+        void on_device_recreated     (const trishul::events::device_recreated&);
+        void on_device_recreate_failed(const trishul::events::device_recreate_failed&);
 
     private:
         trishul::events::dispatcher* dispatcher_ { nullptr };

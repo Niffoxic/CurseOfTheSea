@@ -17,6 +17,7 @@
 #include <trishul/utils/timer.h>
 #include <trishul/event/dispatcher.h>
 #include <trishul/event/window_event.h>
+#include <trishul/renderer/render.h>
 
 #include <format>
 #include <print>
@@ -60,12 +61,53 @@ namespace cots
             default:        return std::format("vk 0x{:02X}", vk);
             }
         }
+
+        //~ gpu switch test asking the renderer to move to a specific adapter
+        void switch_to_adapter(const std::uint32_t index)
+        {
+            auto* gfx = trishul::service_locator::try_get<trishul::render::graphics>();
+            if (!gfx) { std::println("renderer service missing"); return; }
+
+            trishul::render::display_settings s = gfx->current_display_settings();
+            s.manual_adapter = true;
+            s.adapter_index  = index;
+
+            std::println("requesting switch to adapter {}", index);
+            gfx->request_display_settings(s);
+        }
+
+        //~ dump what the menu would show gpus and monitors
+        void list_display_options()
+        {
+            auto* gfx = trishul::service_locator::try_get<trishul::render::graphics>();
+            if (!gfx) { std::println("renderer service missing"); return; }
+
+            const trishul::render::display_capabilities caps = gfx->display_options();
+            std::println("{} adapter(s) current index {}",
+                caps.adapters.size(), caps.current_adapter_index);
+            for (const auto& a : caps.adapters)
+            {
+                std::println("   [{}] {} ({}) {} MB{}",
+                    a.index, a.name, trishul::render::vendor_name(a.vendor_id),
+                    a.dedicated_video_memory / (1024ull * 1024ull),
+                    a.is_warp ? " WARP" : "");
+            }
+
+            std::println("{} output(s)", caps.outputs.size());
+            for (const auto& o : caps.outputs)
+            {
+                std::println("   [{}] {} {}x{}{} {} mode(s)",
+                    o.index, o.name, o.desktop_width, o.desktop_height,
+                    o.is_primary ? " primary" : "", o.modes.size());
+            }
+        }
     } // namespace anonymous
 
     void game_layer::on_attach()
     {
         std::println("input test ready");
         std::println("  F1 toggle fullscreen  F2 1280x720  F3 1600x900  F4 1920x1080");
+        std::println("  F5 list gpus + monitors   keys 0 1 2 switch gpu adapter");
 
         if (auto* timers = trishul::service_locator::try_get<trishul::timer_manager>())
         {
@@ -84,6 +126,10 @@ namespace cots
             dispatcher_->subscribe<window_minimized,          &game_layer::on_window_minimized> (*this);
             dispatcher_->subscribe<window_restored,           &game_layer::on_window_restored>  (*this);
             dispatcher_->subscribe<window_closed,             &game_layer::on_window_closed>    (*this);
+
+            //~ gpu switch result lands here device runs the recreate async
+            dispatcher_->subscribe<device_recreated,       &game_layer::on_device_recreated>      (*this);
+            dispatcher_->subscribe<device_recreate_failed, &game_layer::on_device_recreate_failed>(*this);
         }
     }
 
@@ -98,6 +144,9 @@ namespace cots
             dispatcher_->unsubscribe<window_minimized,          &game_layer::on_window_minimized> (*this);
             dispatcher_->unsubscribe<window_restored,           &game_layer::on_window_restored>  (*this);
             dispatcher_->unsubscribe<window_closed,             &game_layer::on_window_closed>    (*this);
+
+            dispatcher_->unsubscribe<device_recreated,       &game_layer::on_device_recreated>      (*this);
+            dispatcher_->unsubscribe<device_recreate_failed, &game_layer::on_device_recreate_failed>(*this);
             dispatcher_ = nullptr;
         }
     }
@@ -128,6 +177,16 @@ namespace cots
         std::println("[event] closed");
     }
 
+    //~ gpu switch results arrived
+    void game_layer::on_device_recreated(const trishul::events::device_recreated& e)
+    {
+        std::println("device recreated on adapter {}", e.adapter_index);
+    }
+    void game_layer::on_device_recreate_failed(const trishul::events::device_recreate_failed&)
+    {
+        std::println("device recreate FAILED device is down check the logs");
+    }
+
     void game_layer::on_update(float dt)
     {
         using namespace trishul;
@@ -144,6 +203,12 @@ namespace cots
         if (kb.pressed(VK_F2)) window->set_resolution(1280, 720);
         if (kb.pressed(VK_F3)) window->set_resolution(1600, 900);
         if (kb.pressed(VK_F4)) window->set_resolution(1920, 1080);
+
+        //~ gpu adapter switching tests
+        if (kb.pressed(VK_F5)) list_display_options();
+        if (kb.pressed('0'))   switch_to_adapter(0);
+        if (kb.pressed('1'))   switch_to_adapter(1);
+        if (kb.pressed('2'))   switch_to_adapter(2);
 
         std::string mods;
         if (kb.ctrl_down ()) mods += "ctrl+";
