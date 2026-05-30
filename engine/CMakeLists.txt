@@ -6,6 +6,8 @@ add_library(trishul_engine SHARED
         src/service_locator.cpp
         src/utils/timer.cpp
         src/renderer/render.cpp
+        src/renderer/hardware/device.cpp
+        src/core/exception/dx_exception.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)
