@@ -20,6 +20,9 @@
 
 #include "trishul/utils/logger.h"
 
+//~ hardwares
+#include "trishul/renderer/hardware/device.h"
+
 using namespace trishul::render;
 
 struct graphics::impl
@@ -60,7 +63,7 @@ struct graphics::impl
     std::atomic<std::uint32_t> warming_step_   { 0u };
 
     //~ hardware
-    //~ TODO: gotta add devices and all
+    hardware::device device_{};
 
     //~ render related
     struct
@@ -106,7 +109,15 @@ bool graphics::initialize()
 
 void graphics::deinitialize() noexcept
 {
+    if (not render_) return; //~ already deleted
 
+    render_->device_.deinitialize();
+    render_->running_ = false;
+
+    if (render_thread_.joinable()) //~ signaled closure
+    {
+        render_thread_.join();
+    }
 }
 
 void graphics::begin_update(float dt)
@@ -175,7 +186,19 @@ void graphics::render_entry() const
 
 bool graphics::impl::init_bootstrap()
 {
-    //~ TODO: Initialize D3D12 driver
+    //~ todo expose all these to the clients (or the users)
+    hardware::device_create_info device_info{};
+    device_info.flags             = DXGI_ADAPTER_FLAG_SOFTWARE;
+    device_info.preference        = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
+    device_info.min_feature_level = D3D_FEATURE_LEVEL_12_0; //~ thats the lowest
+
+    if (not device_.initialize(device_info))
+    {
+        LOG_CRITICAL("Failed to Create DirectX Device!");
+        return false;
+    }
+
+    LOG_INFO("DirectX 12 Created and Running Just Fine!");
     return true;
 }
 

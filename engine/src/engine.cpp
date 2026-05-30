@@ -20,6 +20,8 @@
 
 #include <windows.h>
 
+#include "trishul/renderer/hardware/device.h"
+
 using namespace trishul;
 
 struct engine::impl
@@ -48,8 +50,9 @@ struct engine::impl
     std::uint32_t  fps_accum_frames_{ 0u };
 
     //~ services
-    platform_window* window_ = nullptr;
-    timer_manager*   timers_ = nullptr;
+    platform_window*  window_ = nullptr;
+    timer_manager*    timers_ = nullptr;
+    render::graphics* render_ = nullptr;
 
     //~ loop thread priority saved for restore on shutdown
     int  prev_thread_priority_   { THREAD_PRIORITY_NORMAL };
@@ -165,8 +168,9 @@ fps_information engine::get_fps() const noexcept
 void engine::impl::initialize_services()
 {
     LOG_DEBUG("acquiring services");
-    window_ = service_locator::get<platform_window>();
-    timers_ = service_locator::get<timer_manager>();
+    window_ = service_locator::get<platform_window> ();
+    timers_ = service_locator::get<timer_manager>   ();
+    render_ = service_locator::get<render::graphics>();
 
     frame_timer_.set_target_fps(create_info_.target_fps);
     if (create_info_.target_fps == 0u) LOG_DEBUG("frame cap uncapped");
@@ -183,13 +187,20 @@ void engine::impl::initialize_services()
 
     LOG_DEBUG("window config applied {}x{}",
         create_info_.window_width, create_info_.window_height);
+
+    //~ TODO: gotta initialize renderer! (gotta arch a smooth way of providing HWND without
+    // giving access to whole platform windows)
 }
 
 bool engine::impl::regulate_services()
 {
-    //~ register and build dependencies
+    //~ register subsystems
     LOG_DEBUG("registering subsystems");
     subsystem_scheduler_.register_type(window_);
+    subsystem_scheduler_.register_type(render_);
+
+    //~ build dependencies between subsystems
+    subsystem_scheduler_.add_dependency(render_, window_); //~ renderer depends on windows
 
     //~ initialize
     for (auto* subsystem: subsystem_scheduler_)
@@ -206,18 +217,22 @@ bool engine::impl::regulate_services()
     return true;
 }
 
-void engine::impl::regulate_tickable()
+void engine::impl::regulate_tickable() //~ main thread tickables only
 {
     //~ register and build dependencies
     LOG_DEBUG("registering tickables");
     tickable_scheduler_.register_type(window_);
+    tickable_scheduler_.register_type(render_);
 
     auto* dispatcher = service_locator::get<events::dispatcher>();
-    ENGINE_ASSERT_MSG(dispatcher, "Dispatcher isnt active this is a major problem");
+    ENGINE_ASSERT_MSG(dispatcher, "Dispatcher isn't active this is a major problem");
     tickable_scheduler_.register_type(dispatcher);
 
     //~ window pumps messages first then the dispatcher flushes the queue
     tickable_scheduler_.add_dependency(dispatcher, window_);
+
+    //~ snapshot handling will be provided later after every subsystem is done
+    tickable_scheduler_.add_dependency(render_, window_); //~ render depends upon everything for MT tickable
 }
 
 void engine::impl::update_tickable(const float dt)

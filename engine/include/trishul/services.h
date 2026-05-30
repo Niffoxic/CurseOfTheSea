@@ -17,6 +17,7 @@
 #include "platform/platform_windows.h"
 #include "utils/timer.h"
 #include "event/dispatcher.h"
+#include "renderer/render.h"
 
 namespace trishul
 {
@@ -27,6 +28,11 @@ namespace trishul
     {
         REGISTER_SERVICE(dispatcher)
     } // namespace events
+
+    namespace render
+    {
+        REGISTER_SERVICE(graphics)
+    } // namespace render
 } // namespace trishul
 
 #endif //CURSEOFTHESEA_SERVICES_H
