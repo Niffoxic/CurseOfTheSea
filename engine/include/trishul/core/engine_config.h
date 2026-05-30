@@ -59,6 +59,7 @@
 
 namespace trishul::config
 {
+    static constexpr std::uint32_t INVALID_INDEX = ~0u;
     static constexpr std::uint32_t SWAPCHAIN_BUFFER_COUNT = 3u;
 
     static constexpr std::uint32_t MAX_LIGHTS              = 32u;
@@ -75,6 +76,8 @@ namespace trishul::config
     static constexpr std::uint32_t SUN_SHADOW_RESOLUTION   = 2048u;
     static constexpr std::uint32_t SPOT_SHADOW_RESOLUTION  = 1024u;
     static constexpr std::uint32_t POINT_SHADOW_RESOLUTION = 512u;
+
+    static constexpr std::uint32_t RENDER_SCENE_SNAPSHOT = 3u;
 } // namespace trishul config
 
 #endif //CURSEOFTHESEA_ENGINE_CONFIG_H

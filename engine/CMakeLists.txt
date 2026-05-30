@@ -5,6 +5,7 @@ add_library(trishul_engine SHARED
         src/platform/platform_windows.cpp
         src/service_locator.cpp
         src/utils/timer.cpp
+        src/renderer/render.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)
