@@ -14,6 +14,7 @@
 #include <trishul/platform/platform_windows.h>
 #include <trishul/platform/inputs/keyboard_component.h>
 #include <trishul/platform/inputs/mouse_component.h>
+#include <trishul/utils/timer.h>
 
 #include <format>
 #include <print>
@@ -62,6 +63,12 @@ namespace cots
     void game_layer::on_attach()
     {
         std::println("input test ready press keys or click");
+
+        if (auto* timers = trishul::service_locator::try_get<trishul::timer_manager>())
+        {
+            timers->set_timer([]{ std::println("[timer] one second elapsed"); },
+                              5.0f, true);
+        }
     }
 
     void game_layer::on_detach()

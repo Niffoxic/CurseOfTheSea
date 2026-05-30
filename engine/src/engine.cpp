@@ -14,8 +14,11 @@
 #include "trishul/core/dependency_handler.h"
 #include "trishul/core/engine_assert.h"
 #include "trishul/utils/logger.h"
+#include "trishul/utils/timer.h"
 
 #include "trishul/services.h"
+
+#include <windows.h>
 
 using namespace trishul;
 
@@ -31,17 +34,26 @@ struct engine::impl
                  void regulate_tickable  ();
 
     //~ per frame
-    void update_tickable();
-    void compute_fps    ();
+    void update_tickable(float dt);
+    void compute_fps    (float dt);
 
     //~ members
     engine_create_info create_info_;
     dependency_handler<interfaces::subsystems> subsystem_scheduler_;
     dependency_handler<interfaces::tickable>   tickable_scheduler_;
+
+    timer          frame_timer_{};
     fps_information fps_{};
+    float          fps_accum_time_  { 0.f };
+    std::uint32_t  fps_accum_frames_{ 0u };
 
     //~ services
     platform_window* window_ = nullptr;
+    timer_manager*   timers_ = nullptr;
+
+    //~ loop thread priority saved for restore on shutdown
+    int  prev_thread_priority_   { THREAD_PRIORITY_NORMAL };
+    bool thread_priority_raised_ { false };
 };
 
 #pragma region ENGINE
@@ -70,6 +82,14 @@ engine::~engine()
         }
     }
 
+    //~ restore the loop thread priority we raised at startup
+    if (p_->thread_priority_raised_ &&
+        p_->prev_thread_priority_ != THREAD_PRIORITY_ERROR_RETURN)
+    {
+        SetThreadPriority(GetCurrentThread(), p_->prev_thread_priority_);
+        LOG_DEBUG("loop thread priority restored");
+    }
+
     logger::instance().deinitialize();
 }
 
@@ -77,6 +97,18 @@ bool engine::initialize() const
 {
     ENGINE_ASSERT_MSG(p_, "Corrupted Engine or destroyed already");
     LOG_INFO("engine initialize begin");
+
+    //~ keep the loop thread ahead of normal background work for steady pacing
+    p_->prev_thread_priority_ = GetThreadPriority(GetCurrentThread());
+    if (SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL))
+    {
+        p_->thread_priority_raised_ = true;
+        LOG_DEBUG("loop thread priority raised to above normal");
+    }
+    else
+    {
+        LOG_WARN("failed to raise loop thread priority");
+    }
 
     p_->initialize_services();
 
@@ -87,6 +119,9 @@ bool engine::initialize() const
     }
 
     p_->regulate_tickable();
+
+    //~ start the clock fresh so the first frame dt is small
+    p_->frame_timer_.reset();
     LOG_INFO("engine initialize complete");
     return true;
 }
@@ -94,8 +129,14 @@ bool engine::initialize() const
 void engine::tick() const
 {
     ENGINE_ASSERT_MSG(p_, "Corrupted Engine or destroyed already");
-    p_->compute_fps    ();
-    p_->update_tickable();
+
+    //~ pace the frame and measure the real delta
+    p_->frame_timer_.step();
+    const float dt = p_->frame_timer_.delta_time();
+
+    p_->compute_fps(dt);
+    if (p_->timers_) p_->timers_->tick(dt);
+    p_->update_tickable(dt);
 }
 
 bool engine::should_close() const noexcept
@@ -108,7 +149,7 @@ bool engine::should_close() const noexcept
 float engine::delta_time() const noexcept
 {
     ENGINE_ASSERT_MSG(p_, "Corrupted Engine or destroyed already");
-    return 0.f;
+    return p_->frame_timer_.delta_time();
 }
 
 fps_information engine::get_fps() const noexcept
@@ -123,8 +164,13 @@ fps_information engine::get_fps() const noexcept
 
 void engine::impl::initialize_services()
 {
-    LOG_DEBUG("acquiring platform window service");
+    LOG_DEBUG("acquiring services");
     window_ = service_locator::get<platform_window>();
+    timers_ = service_locator::get<timer_manager>();
+
+    frame_timer_.set_target_fps(create_info_.target_fps);
+    if (create_info_.target_fps == 0u) LOG_DEBUG("frame cap uncapped");
+    else                               LOG_DEBUG("frame cap {} fps", create_info_.target_fps);
 
     window_create_info window_info{};
     window_info.window_title     = create_info_.window_title;
@@ -167,12 +213,12 @@ void engine::impl::regulate_tickable()
     tickable_scheduler_.register_type(window_);
 }
 
-void engine::impl::update_tickable()
+void engine::impl::update_tickable(const float dt)
 {
     //~ update begin
     for (const auto tickable: tickable_scheduler_)
     {
-        if (tickable) tickable->begin_update(0.f);
+        if (tickable) tickable->begin_update(dt);
     }
 
     //~ update end
@@ -182,26 +228,23 @@ void engine::impl::update_tickable()
     }
 }
 
-void engine::impl::compute_fps()
+void engine::impl::compute_fps(const float dt)
 {
-    using clock = std::chrono::steady_clock;
+    //~ average over half a second from the real frame delta
+    fps_accum_time_ += dt;
+    ++fps_accum_frames_;
 
-    static auto window_start = clock::now();
-    static int  mt_frames    = 0;
-    ++mt_frames;
-
-    const auto  now = clock::now();
-    const float elapsed = std::chrono::duration<float>(now - window_start).count();
-
-    if (elapsed >= 0.5f)
+    if (fps_accum_time_ >= 0.5f)
     {
-        fps_.main_thread     = static_cast<float>(mt_frames) / elapsed;
-        fps_.main_thread_ms  = (elapsed * 1000.f) / static_cast<float>(mt_frames);
+        fps_.main_thread    = static_cast<std::uint32_t>(
+            static_cast<float>(fps_accum_frames_) / fps_accum_time_ + 0.5f);
+        fps_.main_thread_ms = (fps_accum_time_ * 1000.f)
+            / static_cast<float>(fps_accum_frames_);
 
         LOG_TRACE("fps {} {:.3f} ms", fps_.main_thread, fps_.main_thread_ms);
 
-        window_start = now;
-        mt_frames    = 0;
+        fps_accum_time_   = 0.f;
+        fps_accum_frames_ = 0u;
     }
 }
 

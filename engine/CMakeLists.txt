@@ -4,6 +4,7 @@ add_library(trishul_engine SHARED
         src/platform/inputs/keyboard_component.cpp
         src/platform/platform_windows.cpp
         src/service_locator.cpp
+        src/utils/timer.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)

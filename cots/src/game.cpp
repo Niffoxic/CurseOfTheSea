@@ -25,6 +25,7 @@ int WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     info.window_height    = 720;
     info.icon_resource_id = IDI_APP_ICON;
     info.icon_path        = L"deco/app.ico";
+    info.target_fps       = 360; //~ target main thread tho I dont think more than 60 is needed xD but for flexing 360
 
     gameplay::application app{ info };
     app.push_layer(std::make_unique<cots::game_layer>());

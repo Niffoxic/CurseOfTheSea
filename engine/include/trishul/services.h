@@ -15,10 +15,12 @@
 
 //~ services
 #include "platform/platform_windows.h"
+#include "utils/timer.h"
 
 namespace trishul
 {
     REGISTER_SERVICE(platform_window)
+    REGISTER_SERVICE(timer_manager)
 } // namespace trishul
 
 #endif //CURSEOFTHESEA_SERVICES_H

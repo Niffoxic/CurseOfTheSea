@@ -39,6 +39,9 @@ namespace trishul
 
         int          icon_resource_id { 0 };
         std::wstring icon_path        {};
+
+        //~ frame cap zero means uncapped
+        std::uint32_t target_fps      { 0 };
     };
 
     class engine final
