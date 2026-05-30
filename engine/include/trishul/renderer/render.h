@@ -15,6 +15,7 @@
 #include <thread>
 
 #include "render_snapshot.h"
+#include "display.h"
 #include "trishul/core/interface/subsystems.h"
 #include "trishul/core/interface/tickable.h"
 
@@ -56,6 +57,16 @@ namespace trishul::render
 
         //~ helper getters
         [[nodiscard]] graphics_fps frame_fps() const noexcept;
+
+        //~ display settings exposed to the end user so that they can customize it
+        [[nodiscard]] display_capabilities display_options() const;
+
+        //~ whatever the device is actually running on right now
+        [[nodiscard]] display_settings current_display_settings() const;
+
+        //~ user pick for display changes and applies it
+        //~ watch for device_recreated or device_recreate_failed events for the result
+        void request_display_settings(const display_settings& settings);
 
     private:
         //~ render thread entry

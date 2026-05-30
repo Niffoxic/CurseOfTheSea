@@ -10,6 +10,8 @@
 //=============================================================================
 #include "trishul/renderer/render.h"
 #include "trishul/event/window_event.h"
+#include "trishul/event/render_event.h"
+#include "trishul/event/dispatcher.h"
 #include "trishul/core/engine_assert.h"
 #include "trishul/core/engine_config.h"
 
@@ -46,7 +48,12 @@ struct graphics::impl
 
     //~ event callbacks
     //~ windows events
-    void on_window_resized(const events::window_resized& event);
+    void on_window_resized (const events::window_resized& event);
+    void on_display_changed(const events::window_display_changed& event);
+
+    //~ display settings render thread side
+    void build_capabilities    ();  //~ device into a pod snapshot
+    void apply_display_settings(const display_settings& settings);
 
     //~ snapshots related stuff
     void publish_snapshot(); //~ on begin update
@@ -64,6 +71,15 @@ struct graphics::impl
 
     //~ hardware
     hardware::device device_{};
+
+    //~ later will be using it for main menu basically display settings
+    //~ changes get accounted
+    mutable std::mutex                          display_mutex_;
+    std::shared_ptr<const display_capabilities> caps_;
+    display_settings                            current_settings_{};
+    display_settings                            desired_settings_ {};
+    std::atomic<bool>                           settings_dirty_{ false };
+    std::atomic<bool>                           outputs_dirty_ { false };
 
     //~ render related
     struct
@@ -111,13 +127,17 @@ void graphics::deinitialize() noexcept
 {
     if (not render_) return; //~ already deleted
 
-    render_->device_.deinitialize();
+    //~ stop the render thread FIRST so the device outlives every gpu call
     render_->running_ = false;
 
     if (render_thread_.joinable()) //~ signaled closure
     {
         render_thread_.join();
     }
+
+    //~ thread is dead now safe to drop subscriptions and the device
+    render_->unsubscribe_events();
+    render_->device_.deinitialize();
 }
 
 void graphics::begin_update(float dt)
@@ -153,6 +173,41 @@ graphics_fps graphics::frame_fps() const noexcept
     return {};
 }
 
+display_capabilities graphics::display_options() const
+{
+    ENGINE_ASSERT_MSG(render_, "renderer gone did you deinitialize already?");
+
+    //~ grab the shared snapshot under the lock then copy outside it
+    std::shared_ptr<const display_capabilities> snap;
+    {
+        std::lock_guard lock(render_->display_mutex_);
+        snap = render_->caps_;
+    }
+    return snap ? *snap : display_capabilities{};
+}
+
+display_settings graphics::current_display_settings() const
+{
+    ENGINE_ASSERT_MSG(render_, "renderer gone did you deinitialize already?");
+    std::lock_guard lock(render_->display_mutex_);
+    return render_->current_settings_;
+}
+
+void graphics::request_display_settings(const display_settings& settings)
+{
+    ENGINE_ASSERT_MSG(render_, "renderer gone did you deinitialize already?");
+
+    {
+        std::lock_guard lock(render_->display_mutex_);
+        render_->desired_settings_ = settings;
+    }
+    //~ render thread drains this in process_pending_events
+    render_->settings_dirty_.store(true, std::memory_order_release);
+
+    LOG_INFO("display change requested manual {} adapter {} output {}",
+        settings.manual_adapter, settings.adapter_index, settings.output_index);
+}
+
 void graphics::render_entry() const
 {
     ENGINE_ASSERT_MSG(render_, "This is a huge error please delete your os!");
@@ -186,7 +241,8 @@ void graphics::render_entry() const
 
 bool graphics::impl::init_bootstrap()
 {
-    //~ todo expose all these to the clients (or the users)
+    //~ default boot auto picks the best gpu the user can switch at runtime
+    //~ by using the graphics request_display_settings
     hardware::device_create_info device_info{};
     device_info.flags             = DXGI_ADAPTER_FLAG_SOFTWARE;
     device_info.preference        = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
@@ -197,6 +253,14 @@ bool graphics::impl::init_bootstrap()
         LOG_CRITICAL("Failed to Create DirectX Device!");
         return false;
     }
+
+    //~ seed what we actually landed on then publish the first snapshot
+    {
+        std::lock_guard lock(display_mutex_);
+        current_settings_.manual_adapter = device_info.manual;
+        current_settings_.adapter_index  = device_.current_adapter_info().adapter_index;
+    }
+    build_capabilities();
 
     LOG_INFO("DirectX 12 Created and Running Just Fine!");
     return true;
@@ -223,22 +287,127 @@ void graphics::impl::submit_frame(const std::vector<ID3D12CommandList*>& prepare
 
 void graphics::impl::process_pending_events()
 {
+    //~ monitor got plugged unplugged or changed mode rescan the outputs
+    if (outputs_dirty_.exchange(false, std::memory_order_acquire)) //~ very rare what if!
+    {
+        device_.refresh_outputs();
+        build_capabilities();
+    }
 
+    //~ the menu asked for a different gpu monitor or mode
+    if (settings_dirty_.exchange(false, std::memory_order_acquire))
+    {
+        display_settings desired;
+        {
+            std::lock_guard lock(display_mutex_);
+            desired = desired_settings_;
+        }
+        apply_display_settings(desired);
+    }
 }
 
 void graphics::impl::subscribe_events()
 {
+    auto* d = service_locator::try_get<events::dispatcher>();
+    if (not d) return;
 
+    d->subscribe<events::window_resized,         &impl::on_window_resized >(*this);
+    d->subscribe<events::window_display_changed, &impl::on_display_changed>(*this);
 }
 
 void graphics::impl::unsubscribe_events()
 {
+    auto* d = service_locator::try_get<events::dispatcher>();
+    if (not d) return;
 
+    d->unsubscribe<events::window_resized,         &impl::on_window_resized >(*this);
+    d->unsubscribe<events::window_display_changed, &impl::on_display_changed>(*this);
 }
 
 void graphics::impl::on_window_resized(const events::window_resized &event)
 {
 
+}
+
+void graphics::impl::on_display_changed(const events::window_display_changed &event)
+{
+    //~ just a flag process message should resolve it in render thread later
+    outputs_dirty_.store(true, std::memory_order_release);
+}
+
+void graphics::impl::build_capabilities()
+{
+    //~ copy device state into a plain snapshot
+    auto caps = std::make_shared<display_capabilities>();
+    caps->current_adapter_index = device_.current_adapter_info().adapter_index;
+
+    for (const auto& a : device_.adapters_info())
+    {
+        caps->adapters.push_back(adapter_option{
+            a.adapter_index,
+            a.name,
+            a.dedicated_video_memory,
+            a.vendor_id,
+            a.device_id,
+            a.is_wrap,
+        });
+    }
+
+    for (const auto& o : device_.outputs())
+    {
+        output_option out{};
+        out.index          = o.index;
+        out.name           = o.device_name;
+        out.desktop_width  = o.desktop_width;
+        out.desktop_height = o.desktop_height;
+        out.is_primary     = o.is_primary;
+
+        out.modes.reserve(o.supported_modes.size());
+        for (const auto& m : o.supported_modes)
+        {
+            out.modes.push_back(display_mode{
+                m.width, m.height,
+                m.refresh_numerator, m.refresh_denominator,
+            });
+        }
+        caps->outputs.push_back(std::move(out));
+    }
+
+    //~ publish the finished snapshot
+    std::lock_guard lock(display_mutex_);
+    caps_ = std::move(caps);
+}
+
+void graphics::impl::apply_display_settings(const display_settings& settings)
+{
+    //~ only a gpu swap needs a full device recreate rest is gonna be swapchain side
+    const std::uint32_t current = device_.current_adapter_info().adapter_index;
+    if (settings.manual_adapter && settings.adapter_index != current)
+    {
+        hardware::device_create_info info{};
+        info.manual              = true;
+        info.adapter_index       = settings.adapter_index;
+        info.preference          = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
+        info.min_feature_level   = D3D_FEATURE_LEVEL_12_0;
+        info.allow_warp_fallback = true;
+
+        LOG_INFO("switching gpu to adapter {}", settings.adapter_index);
+        if (not device_.recreate(info))
+        {
+            //~ recreate already fired device_recreate_failed menu can react
+            LOG_ERROR("gpu switch failed staying where we can");
+        }
+    }
+
+    //~ output mode fullscreen vsync are swapchain state stored to wire later when I create swapchain
+    {
+        std::lock_guard lock(display_mutex_);
+        current_settings_               = settings;
+        current_settings_.adapter_index = device_.current_adapter_info().adapter_index;
+    }
+
+    //~ adapter or outputs may have moved refresh the menu snapshot
+    build_capabilities();
 }
 
 bool graphics::impl::acquire_snapshot()
