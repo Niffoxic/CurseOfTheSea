@@ -16,11 +16,17 @@
 //~ services
 #include "platform/platform_windows.h"
 #include "utils/timer.h"
+#include "event/dispatcher.h"
 
 namespace trishul
 {
     REGISTER_SERVICE(platform_window)
     REGISTER_SERVICE(timer_manager)
+
+    namespace events
+    {
+        REGISTER_SERVICE(dispatcher)
+    } // namespace events
 } // namespace trishul
 
 #endif //CURSEOFTHESEA_SERVICES_H

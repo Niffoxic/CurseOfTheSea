@@ -13,6 +13,10 @@
 
 #include <gameplay/layer.h>
 
+#include <trishul/event/window_event.h>
+
+namespace trishul::events { class dispatcher; }
+
 namespace cots
 {
     class game_layer final: public gameplay::layer
@@ -24,6 +28,16 @@ namespace cots
         void on_attach() override;
         void on_detach() override;
         void on_update(float dt) override;
+
+        void on_window_resized   (const trishul::events::window_resized&);
+        void on_window_fullscreen(const trishul::events::window_fullscreen_changed&);
+        void on_window_focus     (const trishul::events::window_focus_changed&);
+        void on_window_minimized (const trishul::events::window_minimized&);
+        void on_window_restored  (const trishul::events::window_restored&);
+        void on_window_closed    (const trishul::events::window_closed&);
+
+    private:
+        trishul::events::dispatcher* dispatcher_ { nullptr };
     };
 } // namespace cots
 

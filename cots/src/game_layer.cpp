@@ -15,6 +15,8 @@
 #include <trishul/platform/inputs/keyboard_component.h>
 #include <trishul/platform/inputs/mouse_component.h>
 #include <trishul/utils/timer.h>
+#include <trishul/event/dispatcher.h>
+#include <trishul/event/window_event.h>
 
 #include <format>
 #include <print>
@@ -62,17 +64,68 @@ namespace cots
 
     void game_layer::on_attach()
     {
-        std::println("input test ready press keys or click");
+        std::println("input test ready");
+        std::println("  F1 toggle fullscreen  F2 1280x720  F3 1600x900  F4 1920x1080");
 
         if (auto* timers = trishul::service_locator::try_get<trishul::timer_manager>())
         {
-            timers->set_timer([]{ std::println("[timer] one second elapsed"); },
+            timers->set_timer([]{ std::println("[timer] five seconds elapsed"); },
                               5.0f, true);
+        }
+
+        //~ subscribe to window events fired by the platform
+        dispatcher_ = trishul::service_locator::try_get<trishul::events::dispatcher>();
+        if (dispatcher_)
+        {
+            using namespace trishul::events;
+            dispatcher_->subscribe<window_resized,            &game_layer::on_window_resized>   (*this);
+            dispatcher_->subscribe<window_fullscreen_changed, &game_layer::on_window_fullscreen>(*this);
+            dispatcher_->subscribe<window_focus_changed,      &game_layer::on_window_focus>     (*this);
+            dispatcher_->subscribe<window_minimized,          &game_layer::on_window_minimized> (*this);
+            dispatcher_->subscribe<window_restored,           &game_layer::on_window_restored>  (*this);
+            dispatcher_->subscribe<window_closed,             &game_layer::on_window_closed>    (*this);
         }
     }
 
     void game_layer::on_detach()
     {
+        if (dispatcher_)
+        {
+            using namespace trishul::events;
+            dispatcher_->unsubscribe<window_resized,            &game_layer::on_window_resized>   (*this);
+            dispatcher_->unsubscribe<window_fullscreen_changed, &game_layer::on_window_fullscreen>(*this);
+            dispatcher_->unsubscribe<window_focus_changed,      &game_layer::on_window_focus>     (*this);
+            dispatcher_->unsubscribe<window_minimized,          &game_layer::on_window_minimized> (*this);
+            dispatcher_->unsubscribe<window_restored,           &game_layer::on_window_restored>  (*this);
+            dispatcher_->unsubscribe<window_closed,             &game_layer::on_window_closed>    (*this);
+            dispatcher_ = nullptr;
+        }
+    }
+
+    //~ window event handlers
+    void game_layer::on_window_resized(const trishul::events::window_resized& e)
+    {
+        std::println("[event] resized {}x{}", e.width, e.height);
+    }
+    void game_layer::on_window_fullscreen(const trishul::events::window_fullscreen_changed& e)
+    {
+        std::println("[event] fullscreen {}", e.fullscreen ? "on" : "off");
+    }
+    void game_layer::on_window_focus(const trishul::events::window_focus_changed& e)
+    {
+        std::println("[event] focus {}", e.focused ? "gained" : "lost");
+    }
+    void game_layer::on_window_minimized(const trishul::events::window_minimized&)
+    {
+        std::println("[event] minimized");
+    }
+    void game_layer::on_window_restored(const trishul::events::window_restored&)
+    {
+        std::println("[event] restored");
+    }
+    void game_layer::on_window_closed(const trishul::events::window_closed&)
+    {
+        std::println("[event] closed");
     }
 
     void game_layer::on_update(float dt)
@@ -87,13 +140,16 @@ namespace cots
         const auto& kb = window->get_component<keyboard>();
         const auto& ms = window->get_component<mouse>();
 
-        //~ modifier prefix for non modifier keys
+        if (kb.pressed(VK_F1)) window->toggle_fullscreen();
+        if (kb.pressed(VK_F2)) window->set_resolution(1280, 720);
+        if (kb.pressed(VK_F3)) window->set_resolution(1600, 900);
+        if (kb.pressed(VK_F4)) window->set_resolution(1920, 1080);
+
         std::string mods;
         if (kb.ctrl_down ()) mods += "ctrl+";
         if (kb.shift_down()) mods += "shift+";
         if (kb.alt_down  ()) mods += "alt+";
 
-        //~ which key this frame
         for (int vk = 0; vk < 256; ++vk)
         {
             if (!kb.pressed(vk)) continue;

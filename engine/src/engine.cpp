@@ -211,6 +211,13 @@ void engine::impl::regulate_tickable()
     //~ register and build dependencies
     LOG_DEBUG("registering tickables");
     tickable_scheduler_.register_type(window_);
+
+    auto* dispatcher = service_locator::get<events::dispatcher>();
+    ENGINE_ASSERT_MSG(dispatcher, "Dispatcher isnt active this is a major problem");
+    tickable_scheduler_.register_type(dispatcher);
+
+    //~ window pumps messages first then the dispatcher flushes the queue
+    tickable_scheduler_.add_dependency(dispatcher, window_);
 }
 
 void engine::impl::update_tickable(const float dt)

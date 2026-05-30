@@ -184,6 +184,13 @@ namespace trishul
             return window_size_.as<T>();
         }
 
+        [[nodiscard]] bool is_fullscreen() const noexcept;
+
+        //~ window state controls fire dispatcher events
+        void toggle_fullscreen();
+        void set_fullscreen   (bool enable);
+        void set_resolution   (std::uint32_t width, std::uint32_t height);
+
         //~ setters
         void set_style   (window_style style)                        const;
         void set_size    (std::uint32_t width, std::uint32_t height) const;
@@ -216,6 +223,10 @@ namespace trishul
         HINSTANCE       window_instance_{ nullptr };
         screen_state    screen_state_   { screen_state::none };
         platform_status status_         { platform_status::Running };
+
+        //~ saved windowed state for restoring out of fullscreen
+        WINDOWPLACEMENT windowed_placement_{ sizeof(WINDOWPLACEMENT) };
+        LONG            windowed_style_    { 0 };
     };
 } // namespace trishul
 

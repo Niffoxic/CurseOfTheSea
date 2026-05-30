@@ -14,6 +14,8 @@
 #include "trishul/utils/logger.h"
 #include "trishul/platform/inputs/keyboard_component.h"
 #include "trishul/platform/inputs/mouse_component.h"
+#include "trishul/event/dispatcher.h"
+#include "trishul/event/window_event.h"
 
 namespace trishul
 {
@@ -120,6 +122,91 @@ namespace trishul
     bool platform_window::should_close() const noexcept
     {
         return status_ == platform_status::Quit;
+    }
+
+    bool platform_window::is_fullscreen() const noexcept
+    {
+        return has_flag(screen_state_, screen_state::fullscreen);
+    }
+
+    void platform_window::toggle_fullscreen()
+    {
+        set_fullscreen(!is_fullscreen());
+    }
+
+    void platform_window::set_fullscreen(const bool enable)
+    {
+        if (!window_handle_)        return;
+        if (enable == is_fullscreen()) return;
+
+        if (enable)
+        {
+            //~ remember the windowed placement and style to restore later
+            windowed_placement_.length = sizeof(WINDOWPLACEMENT);
+            GetWindowPlacement(window_handle_, &windowed_placement_);
+            windowed_style_ = GetWindowLongW(window_handle_, GWL_STYLE);
+
+            //~ cover the monitor the window currently sits on borderless
+            const HMONITOR mon = MonitorFromWindow(window_handle_, MONITOR_DEFAULTTONEAREST);
+            MONITORINFO mi{ sizeof(MONITORINFO) };
+            GetMonitorInfoW(mon, &mi);
+
+            const int w = mi.rcMonitor.right  - mi.rcMonitor.left;
+            const int h = mi.rcMonitor.bottom - mi.rcMonitor.top;
+
+            SetWindowLongW(window_handle_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+            SetWindowPos(window_handle_, HWND_TOP,
+                         mi.rcMonitor.left, mi.rcMonitor.top, w, h,
+                         SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+            screen_state_ &= ~screen_state::windowed;
+            screen_state_ |=  screen_state::fullscreen;
+        }
+        else
+        {
+            SetWindowLongW(window_handle_, GWL_STYLE,
+                windowed_style_ ? windowed_style_ : WS_OVERLAPPEDWINDOW);
+            SetWindowPlacement(window_handle_, &windowed_placement_);
+            SetWindowPos(window_handle_, nullptr, 0, 0, 0, 0,
+                         SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
+
+            screen_state_ &= ~screen_state::fullscreen;
+            screen_state_ |=  screen_state::windowed;
+        }
+
+        LOG_INFO("fullscreen {}", enable ? "on" : "off");
+        //~ the resize from set window pos publishes window_resized too
+        events::publish<events::window_fullscreen_changed>(enable);
+    }
+
+    void platform_window::set_resolution(const std::uint32_t width, const std::uint32_t height)
+    {
+        if (!window_handle_) return;
+
+        //~ resolution is a windowed concept leave fullscreen first
+        if (is_fullscreen()) set_fullscreen(false);
+
+        const DWORD style    = static_cast<DWORD>(GetWindowLongW(window_handle_, GWL_STYLE));
+        const DWORD ex_style = static_cast<DWORD>(GetWindowLongW(window_handle_, GWL_EXSTYLE));
+
+        RECT rc{ 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
+        AdjustWindowRectEx(&rc, style, FALSE, ex_style);
+
+        const int win_w = rc.right  - rc.left;
+        const int win_h = rc.bottom - rc.top;
+
+        //~ center on the work area of the current monitor
+        const HMONITOR mon = MonitorFromWindow(window_handle_, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi{ sizeof(MONITORINFO) };
+        GetMonitorInfoW(mon, &mi);
+
+        const int x = mi.rcWork.left + ((mi.rcWork.right  - mi.rcWork.left) - win_w) / 2;
+        const int y = mi.rcWork.top  + ((mi.rcWork.bottom - mi.rcWork.top)  - win_h) / 2;
+
+        SetWindowPos(window_handle_, nullptr, x, y, win_w, win_h,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+
+        LOG_INFO("resolution requested {}x{}", width, height);
     }
 
     void platform_window::set_style(const window_style style) const
@@ -288,33 +375,47 @@ namespace trishul
             if (w_param == SIZE_MINIMIZED)
             {
                 screen_state_ |= screen_state::minimized;
+                events::publish<events::window_minimized>();
             }
             else
             {
+                const bool was_minimized = has_flag(screen_state_, screen_state::minimized);
                 screen_state_ &= ~screen_state::minimized;
                 window_size_.width  = static_cast<int>(width);
                 window_size_.height = static_cast<int>(height);
 
-                //~ TODO: publish resize once the dispatcher exists
+                if (was_minimized) events::publish<events::window_restored>();
+
+                events::publish<events::window_resized>(
+                    static_cast<std::uint32_t>(width),
+                    static_cast<std::uint32_t>(height));
             }
             return 0;
         }
+        case WM_MOVE:
+            events::publish<events::window_moved>(
+                static_cast<std::int32_t>(static_cast<short>(LOWORD(l_param))),
+                static_cast<std::int32_t>(static_cast<short>(HIWORD(l_param))));
+            return 0;
         case WM_ACTIVATE:
         {
-            if (LOWORD(w_param) == WA_INACTIVE)
-            {
-                screen_state_ &= ~screen_state::active;
-                screen_state_ |=  screen_state::inactive;
-            }
-            else
+            const bool focused = LOWORD(w_param) != WA_INACTIVE;
+            if (focused)
             {
                 screen_state_ |=  screen_state::active;
                 screen_state_ &= ~screen_state::inactive;
             }
+            else
+            {
+                screen_state_ &= ~screen_state::active;
+                screen_state_ |=  screen_state::inactive;
+            }
+            events::publish<events::window_focus_changed>(focused);
             return 0;
         }
         case WM_DESTROY:
             status_ = platform_status::Quit;
+            events::publish<events::window_closed>();
             PostQuitMessage(0);
             return 0;
         default:
