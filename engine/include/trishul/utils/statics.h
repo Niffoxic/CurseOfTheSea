@@ -61,6 +61,13 @@ namespace statics //~ niffoxic cross project helpers
         );
         return out;
     }
+
+    //~ rounded up to 256
+     __forceinline static std::uint64_t align_cb_size(const std::uint64_t size, const bool is_constant) noexcept
+    {
+        if (!is_constant) return size;
+        return (size + 255ull) & ~255ull;
+    }
 } // statics
 
 #endif //CURSEOFTHESEA_STATICS_H

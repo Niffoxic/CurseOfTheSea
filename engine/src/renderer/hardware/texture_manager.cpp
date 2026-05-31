@@ -70,15 +70,13 @@ namespace trishul::render::hardware
         }
 
         //~ up and running nobody flagged for rebuild
-        if (!slots_.empty() && !need_rebuild_.load(std::memory_order_acquire))
+        if (!need_rebuild_.load(std::memory_order_acquire))
             return true;
 
         //~ start with a clean table a device recreate throws away every gpu
         //~ texture so the game has to reload them we just hand back an empty set
         //~ TODO: Auto Reload resources later
-        slots_.clear();
-        slots_.reserve(32);
-        slots_.push_back(slot{}); //~ slot zero is the reserved invalid handle
+        textures_.clear();
 
         need_rebuild_.store(false, std::memory_order_release);
         return device_->allocator() != nullptr;
@@ -87,11 +85,10 @@ namespace trishul::render::hardware
     void texture_manager::deinitialize() noexcept
     {
         //~ teardown happens with the gpu idle so we can free straight away with
-        //~ no deferral slot zero falls out early since it never owns anything
-        for (auto& s : slots_)
-            release_slot_now(s, bindless_);
+        //~ no deferral the slot_map only ever hands the live ones
+        textures_.for_each([this](slot& s) { release_slot_now(s, bindless_); });
+        textures_.clear();
 
-        slots_   .clear();
         device_   = nullptr;
         bindless_ = nullptr;
         releaser_ = nullptr;
@@ -100,36 +97,27 @@ namespace trishul::render::hardware
     }
 
     //~ frees everything one slot owns right now used on teardown and to clean
-    //~ up a half built texture when create bails this is the inline path so the
-    //~ just make sure the gpu is not still reading the texture
+    //~ up a half built texture when create bails this is the inline path so gotta
+    //~ make sure the gpu is not still reading the texture
     void texture_manager::release_slot_now(slot& s, descriptor_heap* bindless) noexcept
     {
-        //~ a live slot has a non zero generation an empty one owns nothing
-        if (s.generation != 0u && bindless)
+        //~ only return a slot we actually grabbed a fresh slot sits at the heaps
+        //~ invalid marker so this skips it no accidental release of real slot zero
+        if (bindless && s.bindless_slot != descriptor_heap::invalid_slot)
             bindless->release(s.bindless_slot);
-        
-        //~ reelease resources
+
+        //~ two refs the resource and the allocation both go
         if (s.resource)   s.resource->Release();
         if (s.allocation) s.allocation->Release();
 
         s = slot{};
     }
 
-    //~ find a free row in the table a freed slot has generation zero so we can
-    //~ reuse it if none are free we grow start at one because slot zero is the
-    //~ reserved invalid handle and must never gonna be handing it out
-    std::uint32_t texture_manager::acquire_slot()
-    {
-        for (std::uint32_t i = 1; i < slots_.size(); ++i)
-            if (slots_[i].generation == 0) return i;
-
-        slots_.push_back(slot{});
-        return static_cast<std::uint32_t>(slots_.size() - 1);
-    }
-
-    //~ the live rgba path make the gpu texture push the pixels up through the
-    //~ arena grab a bindless srv then stamp a generation and hand back a handle
-    //~ the generation will be catching any stale handle later if the slot got reused
+    //~ the live rgba path build the texture on a local slot make the gpu
+    //~ resource push the pixels up through the arena grab a bindless srv then
+    //~ drop the whole thing into the slot_map which hands back the handle if
+    //~ anything fails along the way we toss the local and nothing ever entered
+    //~ the table so no half built ghosts to clean up
     texture_handle texture_manager::create(const texture_create_info& info)
     {
         //~ bail early if we are not wired or the inputs make no sense
@@ -137,14 +125,13 @@ namespace trishul::render::hardware
         if (info.width == 0 || info.height == 0 || !info.pixels)
             return texture_handle::invalid();
 
-        const std::uint32_t idx = acquire_slot();
-        slot& s         = slots_[idx];
-        s.width         = info.width;
-        s.height        = info.height;
-        s.mip_levels    = 1;
-        s.dxgi_format   = to_dxgi(info.format);
-
-        const DXGI_FORMAT dxgi = s.dxgi_format;
+        //~ build it all on a local slot nothing touches the slot_map until the
+        //~ very end so a failure just discards this and the table stays clean
+        slot s{};
+        s.width       = info.width;
+        s.height      = info.height;
+        s.mip_levels  = 1;
+        s.dxgi_format = to_dxgi(info.format);
 
         D3D12MA::ALLOCATION_DESC alloc_desc{};
         alloc_desc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
@@ -156,25 +143,20 @@ namespace trishul::render::hardware
         desc.Height             = info.height;
         desc.DepthOrArraySize   = 1;
         desc.MipLevels          = 1;
-        desc.Format             = dxgi;
+        desc.Format             = s.dxgi_format;
         desc.SampleDesc         = { 1, 0 };
         desc.Layout             = D3D12_TEXTURE_LAYOUT_UNKNOWN;
         desc.Flags              = D3D12_RESOURCE_FLAG_NONE;
 
-        D3D12MA::Allocation* alloc = nullptr;
-        ID3D12Resource2*     res   = nullptr;
         if (FAILED(device_->allocator()->CreateResource(
                 &alloc_desc, &desc,
                 D3D12_RESOURCE_STATE_COMMON,
                 nullptr,
-                &alloc, IID_PPV_ARGS(&res))))
+                &s.allocation, IID_PPV_ARGS(&s.resource))))
         {
             LOG_ERROR(".CreateResource failed ({})", info.debug_name);
-            s = slot{};
-            return texture_handle::invalid();
+            return texture_handle::invalid(); //~ nothing got made nothing to free
         }
-        s.allocation = alloc;
-        s.resource   = res;
 
         //~ name setup
         const std::wstring wname = info.debug_name
@@ -188,8 +170,7 @@ namespace trishul::render::hardware
 
         if (!upload_pixels(s.resource, info.width, info.height, info.pixels, source_row))
         {
-            //~ upload died throw away the resource we just made gen is still
-            //~ zero so this only frees the resource and the allocation
+            //~ upload died toss the resource and bail
             release_slot_now(s, bindless_);
             return texture_handle::invalid();
         }
@@ -205,13 +186,14 @@ namespace trishul::render::hardware
         }
         create_srv(s);
 
-        const std::uint32_t gen = next_generation_++;
-        if (next_generation_ == 0) next_generation_ = 1;
-        s.generation = gen;
+        //~ all good hand it to the slot_map which mints the handle for us grab
+        //~ the slot index first since the move leaves s empty
+        const std::uint32_t slot_index = s.bindless_slot;
+        const texture_handle h = textures_.insert(std::move(s));
 
         LOG_INFO(".'{}' {}x{} created in bindless slot {}",
-                     info.debug_name, info.width, info.height, s.bindless_slot);
-        return texture_handle{ idx, gen };
+                     info.debug_name, info.width, info.height, slot_index);
+        return h;
     }
 
     //~ single mip 2d texture upload right now rides the shared arena pool
@@ -260,17 +242,17 @@ namespace trishul::render::hardware
 
     void texture_manager::destroy(const texture_handle h)
     {
-        if (!h.valid() || h.index >= slots_.size()) return;
-        slot& s = slots_[h.index];
-        if (s.generation != h.generation) return; //~ stale handle already freed
+        slot* sp = textures_.get(h);
+        if (!sp) return; //~ stale or unknown handle nothing to do
+        slot& s = *sp;
 
         if (releaser_) //~ the safe path push the frees behind the gpu fence so a
         {              //~ frame still reading this texture does not get it yanked
             releaser_->enqueue_bindless_slot(s.bindless_slot);
             releaser_->enqueue_allocation(s.allocation);
 
-            //~ the resource ref we own goes through the queue
-            //~ too attach takes our ref straight no extra addref performance boost
+            //~ the resource ref we own goes through the queue too attach takes
+            //~ our ref straight no extra addref
             if (s.resource)
             {
                 Microsoft::WRL::ComPtr<ID3D12Resource2> res_com;
@@ -279,48 +261,46 @@ namespace trishul::render::hardware
             }
             s.allocation = nullptr;
             s.resource   = nullptr;
-            s = slot{};
         }
         else //~ no releaser wired free inline and just hope the gpu is done
         {
             LOG_WARN("texture_manager destroy without a releaser freeing inline");
-            release_slot_now(s, bindless_); //~ resets the slot for us
+            release_slot_now(s, bindless_);
         }
+
+        //~ slot is emptied either way let the slot_map recycle the row and bump
+        //~ its generation so the old handle reads as stale from here on
+        textures_.erase(h);
     }
 
     ID3D12Resource2* texture_manager::resource(const texture_handle h) const
     {
-        if (!h.valid() || h.index >= slots_.size()) return nullptr;
-        const slot& s = slots_[h.index];
-        return s.generation == h.generation ? s.resource : nullptr;
+        const slot* s = textures_.get(h);
+        return s ? s->resource : nullptr;
     }
 
     std::uint32_t texture_manager::bindless_slot(const texture_handle h) const
     {
-        if (!h.valid() || h.index >= slots_.size()) return descriptor_heap::invalid_slot;
-        const slot& s = slots_[h.index];
-        return s.generation == h.generation ? s.bindless_slot : descriptor_heap::invalid_slot;
+        const slot* s = textures_.get(h);
+        return s ? s->bindless_slot : descriptor_heap::invalid_slot;
     }
 
     std::uint32_t texture_manager::width(const texture_handle h) const
     {
-        if (!h.valid() || h.index >= slots_.size()) return 0;
-        const slot& s = slots_[h.index];
-        return s.generation == h.generation ? s.width : 0;
+        const slot* s = textures_.get(h);
+        return s ? s->width : 0u;
     }
 
     std::uint32_t texture_manager::height(const texture_handle h) const
     {
-        if (!h.valid() || h.index >= slots_.size()) return 0;
-        const slot& s = slots_[h.index];
-        return s.generation == h.generation ? s.height : 0;
+        const slot* s = textures_.get(h);
+        return s ? s->height : 0u;
     }
 
     std::uint32_t texture_manager::mip_levels(const texture_handle h) const
     {
-        if (!h.valid() || h.index >= slots_.size()) return 0;
-        const slot& s = slots_[h.index];
-        return s.generation == h.generation ? s.mip_levels : 0;
+        const slot* s = textures_.get(h);
+        return s ? s->mip_levels : 0u;
     }
 
     //~ the baked path same idea as the create but the pixels come from a dds blob
@@ -344,8 +324,9 @@ namespace trishul::render::hardware
             return texture_handle::invalid();
         }
 
-        const std::uint32_t idx = acquire_slot();
-        slot& s       = slots_[idx];
+        //~ build on a local slot just like create only the table sees it on
+        //~ full success
+        slot s{};
         s.width       = static_cast<std::uint32_t>(metadata.width);
         s.height      = static_cast<std::uint32_t>(metadata.height);
         s.mip_levels  = static_cast<std::uint32_t>(metadata.mipLevels);
@@ -366,20 +347,15 @@ namespace trishul::render::hardware
         desc.Layout             = D3D12_TEXTURE_LAYOUT_UNKNOWN;
         desc.Flags              = D3D12_RESOURCE_FLAG_NONE;
 
-        D3D12MA::Allocation* alloc = nullptr;
-        ID3D12Resource2*     res   = nullptr;
         if (FAILED(device_->allocator()->CreateResource(
                 &alloc_desc, &desc,
                 D3D12_RESOURCE_STATE_COMMON,
                 nullptr,
-                &alloc, IID_PPV_ARGS(&res))))
+                &s.allocation, IID_PPV_ARGS(&s.resource))))
         {
             LOG_ERROR(".CreateResource failed for baked '{}'", info.debug_name);
-            s = slot{};
-            return texture_handle::invalid();
+            return texture_handle::invalid(); //~ nothing made nothing to free
         }
-        s.allocation = alloc;
-        s.resource   = res;
 
         const std::wstring wname = info.debug_name
             ? statics::to_wide(info.debug_name)
@@ -389,8 +365,7 @@ namespace trishul::render::hardware
         //~ upload all mips
         if (!upload_dds(s.resource, info.dds_data, info.dds_size, s.mip_levels))
         {
-            //~ mip upload failed drop the resource gen is still zero
-            release_slot_now(s, bindless_);
+            release_slot_now(s, bindless_); //~ mip upload failed drop it
             return texture_handle::invalid();
         }
 
@@ -406,13 +381,15 @@ namespace trishul::render::hardware
         }
         create_srv(s);
 
-        const std::uint32_t gen = next_generation_++;
-        if (next_generation_ == 0) next_generation_ = 1;
-        s.generation = gen;
+        //~ stash the fields we want to log before the move empties s then hand
+        //~ it to the slot_map for a fresh handle
+        const std::uint32_t w = s.width, hgt = s.height, mips = s.mip_levels;
+        const std::uint32_t slot_index = s.bindless_slot;
+        const texture_handle h = textures_.insert(std::move(s));
 
         LOG_INFO(".'{}' baked {}x{} {} mips bindless slot {}",
-                     info.debug_name, s.width, s.height, s.mip_levels, s.bindless_slot);
-        return texture_handle{ idx, gen };
+                     info.debug_name, w, hgt, mips, slot_index);
+        return h;
     }
 
     //~ dds mip chain upload routes the prepared subresources through the

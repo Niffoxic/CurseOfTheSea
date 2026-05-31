@@ -13,29 +13,18 @@
 
 #include <cstdint>
 
-//~ has handles and info related to resources
+#include "trishul/core/slot_map.h"
+
+//~ handles and the types the resource managers pass around the handles
+//~ themselves come straight from core slot_map no point hand rolling the same
+//~ index plus generation thing twice
 namespace trishul::render::hardware
 {
-    struct texture_handle
-    {
-        std::uint32_t index     { 0u };
-        std::uint32_t generation{ 0u };
+    struct texture_tag {};
+    struct buffer_tag  {};
 
-        [[nodiscard]] bool valid() const noexcept
-        {
-            return generation != 0u;
-        }
-
-        [[nodiscard]] static texture_handle invalid() noexcept
-        {
-            return { 0u, 0u };
-        }
-
-        bool operator==(const texture_handle& o) const noexcept
-        {
-            return index == o.index && generation == o.generation;
-        }
-    };
+    using texture_handle = handle<texture_tag>;
+    using buffer_handle  = handle<buffer_tag>;
 
     enum class texture_format : std::uint8_t
     {
@@ -43,33 +32,12 @@ namespace trishul::render::hardware
         rgba8_unorm_srgb,
     };
 
-    struct buffer_handle
-    {
-        std::uint32_t index     { 0u };
-        std::uint32_t generation{ 0u };
-
-        [[nodiscard]] bool valid() const noexcept
-        {
-            return generation != 0u;
-        }
-
-        [[nodiscard]] static buffer_handle invalid() noexcept
-        {
-            return { 0u, 0u };
-        }
-
-        bool operator==(const buffer_handle& o) const noexcept
-        {
-            return index == o.index && generation == o.generation;
-        }
-    };
-
     enum class buffer_kind : std::uint8_t
     {
         vertex,
         index,
         constant,
-        generic,    //~ structured or raw gpu dfault heap
+        generic,    //~ structured or raw gpu default heap
 
         //~ source vertex data for the compute skinning pass it reads as a root
         //  srv the bind pose position normal joints weights streams

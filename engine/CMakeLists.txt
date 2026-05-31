@@ -16,6 +16,7 @@ add_library(trishul_engine SHARED
         src/renderer/hardware/upload_arena.cpp
         src/renderer/hardware/deferred_releaser.cpp
         src/renderer/hardware/texture_manager.cpp
+        src/renderer/hardware/buffer_manager.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)

@@ -113,12 +113,9 @@ namespace trishul::render::hardware
             std::uint32_t        width         { 0 };
             std::uint32_t        height        { 0 };
             std::uint32_t        mip_levels    { 1 };
-            std::uint32_t        bindless_slot { 0 };
-            std::uint32_t        generation    { 0 };
+            std::uint32_t        bindless_slot { ~0u };
             DXGI_FORMAT          dxgi_format   { DXGI_FORMAT_UNKNOWN };
         };
-
-        [[nodiscard]] std::uint32_t acquire_slot();
 
         //~ single mip upload
         bool upload_pixels(ID3D12Resource2* dst,
@@ -141,10 +138,10 @@ namespace trishul::render::hardware
         descriptor_heap*    bindless_ { nullptr };
         deferred_releaser*  releaser_ { nullptr };
         upload_arena*       arena_    { nullptr };
-
-        std::vector<slot> slots_;
-        std::uint32_t     next_generation_ { 1 };
-        std::atomic<bool> need_rebuild_    { true }; //~ flag for handler in case parent changed internals
+        
+        //~ later for gpu release
+        slot_map<slot, texture_tag> textures_;
+        std::atomic<bool>           need_rebuild_{ true }; //~ flag for handler in case parent changed internals
     };
 } // namespace trishul::render::hardware
 

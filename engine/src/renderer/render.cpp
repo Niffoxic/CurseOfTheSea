@@ -35,6 +35,7 @@
 #include "trishul/renderer/hardware/upload_arena.h"
 #include "trishul/renderer/hardware/deferred_releaser.h"
 #include "trishul/renderer/hardware/texture_manager.h"
+#include "trishul/renderer/hardware/buffer_manager.h"
 #include "trishul/platform/platform_windows.h"
 
 using namespace trishul::render;
@@ -125,6 +126,7 @@ struct graphics::impl
     hardware::upload_arena      uploader_         {};
     hardware::deferred_releaser releaser_         {};
     hardware::texture_manager   textures_         {};
+    hardware::buffer_manager    buffers_          {};
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
     mutable std::mutex                          display_mutex_;
@@ -403,6 +405,14 @@ bool graphics::impl::init_bootstrap()
     texture_info.arena    = &uploader_;
     textures_.set_config(texture_info);
 
+    //~ buffer manager same shape as textures minus the bindless heap buffers
+    //~ bind by gpu address not a descriptor slot
+    hardware::buffer_manager_config buffer_info{};
+    buffer_info.dev      = &device_;
+    buffer_info.releaser = &releaser_;
+    buffer_info.arena    = &uploader_;
+    buffers_.set_config(buffer_info);
+
     //~ register each hardware to the handler
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
@@ -414,6 +424,7 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.register_type(&uploader_);
     hardware_handler_.register_type(&releaser_);
     hardware_handler_.register_type(&textures_);
+    hardware_handler_.register_type(&buffers_);
 
     if (hwnd) //~ god knows who is playing my game without a SCREEN!
     {
@@ -453,6 +464,10 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.add_dependency<hardware::texture_manager,   hardware::descriptor_heap>();
     hardware_handler_.add_dependency<hardware::texture_manager,   hardware::upload_arena>();
     hardware_handler_.add_dependency<hardware::texture_manager,   hardware::deferred_releaser>();
+    //~ buffers same story as textures just no bindless heap to worry about
+    hardware_handler_.add_dependency<hardware::buffer_manager,    hardware::device>();
+    hardware_handler_.add_dependency<hardware::buffer_manager,    hardware::upload_arena>();
+    hardware_handler_.add_dependency<hardware::buffer_manager,    hardware::deferred_releaser>();
     if (hwnd) //~ very very rare to not have this!
         hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 
