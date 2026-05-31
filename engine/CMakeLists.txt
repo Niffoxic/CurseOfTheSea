@@ -12,6 +12,7 @@ add_library(trishul_engine SHARED
         src/renderer/hardware/swapchain.cpp
         src/renderer/hardware/descriptor_heap.cpp
         src/renderer/hardware/queue_timeline.cpp
+        src/renderer/hardware/depth_target.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)

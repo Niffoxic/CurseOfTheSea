@@ -29,6 +29,7 @@
 #include "trishul/renderer/hardware/swapchain.h"
 #include "trishul/renderer/hardware/descriptor_heap.h"
 #include "trishul/renderer/hardware/queue_timeline.h"
+#include "trishul/renderer/hardware/depth_target.h"
 #include "trishul/platform/platform_windows.h"
 
 using namespace trishul::render;
@@ -71,7 +72,6 @@ struct graphics::impl
     //~ event callbacks
     //~ windows events
     void on_window_resized   (const events::window_resized& event);
-    void on_window_fullscreen(const events::window_fullscreen_changed& event);
     void on_display_changed  (const events::window_display_changed& event);
 
     //~ device fired the gpu came back possibly on a different adapter
@@ -81,8 +81,10 @@ struct graphics::impl
     void on_device_lost(const events::device_lost& event);
 
     //~ hardware lifecycle render thread side
-    void rebuild_hardware      ();  //~ reinit any child that raised need_rebuild
-    void build_capabilities    ();  //~ device into a pod snapshot
+    void rebuild_hardware      ();  //~ in case some events happens which corrupts whole resources
+    void deinit_dependents     () const;  //~ from child to the parent
+    void init_dependents       () const;  //~ from parent to the child
+    void build_capabilities    ();
     void apply_display_settings(const display_settings& settings);
 
     //~ snapshots related stuff
@@ -105,9 +107,10 @@ struct graphics::impl
     hardware::fence           fence_            {};
     hardware::swapchain       swapchain_        {};
     hardware::descriptor_heap bindless_         {};
-    hardware::queue_timeline  graphics_timeline_{};
-    hardware::queue_timeline  compute_timeline_ {};
-    hardware::queue_timeline  copy_timeline_    {};
+    hardware::graphics_timeline graphics_timeline_{};
+    hardware::compute_timeline  compute_timeline_ {};
+    hardware::copy_timeline     copy_timeline_    {};
+    hardware::depth_target      depth_            {};
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
     mutable std::mutex                          display_mutex_;
@@ -268,7 +271,7 @@ void graphics::render_entry() const
     }
 
     render_->bootstrap_ready_.store(true, std::memory_order_release);
-    LOG_INFO("[render] bootstrap is complete!");
+    LOG_INFO("bootstrap is complete!");
 
     //~ thead properties
     ((void)SetThreadDescription(
@@ -309,27 +312,13 @@ bool graphics::impl::init_bootstrap()
     heap_info.capacity = config::BINDLESS_CAPACITY;
     bindless_.set_config(heap_info);
 
-    //~ graphics queue timeline and other ones just needed the device and which
-    //~ queue to wrap refetches the queue on a gpu swap
+    //~ queue timelines each owns its fence the queue kind is baked into the
+    //~ type so that they all share one config just the device
     hardware::queue_timeline_config timeline_info{};
-    timeline_info.dev        = &device_;
-    timeline_info.queue_kind = hardware::command_list_type::direct;
-    timeline_info.label      = "graphics timeline";
+    timeline_info.dev = &device_;
     graphics_timeline_.set_config(timeline_info);
-
-    //~ compute queue timeline
-    hardware::queue_timeline_config compute_info{};
-    compute_info.dev        = &device_;
-    compute_info.queue_kind = hardware::command_list_type::compute;
-    compute_info.label      = "compute timeline";
-    compute_timeline_.set_config(compute_info);
-
-    //~ copy queue timeline
-    hardware::queue_timeline_config copy_info{};
-    copy_info.dev        = &device_;
-    copy_info.queue_kind = hardware::command_list_type::compute;
-    copy_info.label      = "compute timeline";
-    copy_timeline_.set_config(copy_info);
+    compute_timeline_ .set_config(timeline_info);
+    copy_timeline_    .set_config(timeline_info);
 
     //~ swapchain needed window handle must be ready since
     //~ renderer depends upon windows platform
@@ -347,6 +336,14 @@ bool graphics::impl::init_bootstrap()
         }
     }
 
+    //~ depth target matches the backbuffer and samples through the bindless heap
+    hardware::depth_target_config depth_info{};
+    depth_info.dev      = &device_;
+    depth_info.bindless = &bindless_;
+    depth_info.width    = back_w;
+    depth_info.height   = back_h;
+    depth_.set_config(depth_info);
+
     //~ register each hardware to the handler
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
@@ -354,6 +351,7 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.register_type(&graphics_timeline_);
     hardware_handler_.register_type(&compute_timeline_);
     hardware_handler_.register_type(&copy_timeline_);
+    hardware_handler_.register_type(&depth_);
 
     if (hwnd) //~ god knows who is playing my game without a SCREEN!
     {
@@ -374,9 +372,14 @@ bool graphics::impl::init_bootstrap()
     }
 
     //~ build dependencies
-    hardware_handler_.add_dependency<hardware::fence,           hardware::device>();
-    hardware_handler_.add_dependency<hardware::descriptor_heap, hardware::device>();
-    if (hwnd)
+    hardware_handler_.add_dependency<hardware::fence,             hardware::device>();
+    hardware_handler_.add_dependency<hardware::descriptor_heap,   hardware::device>();
+    hardware_handler_.add_dependency<hardware::graphics_timeline, hardware::device>();
+    hardware_handler_.add_dependency<hardware::compute_timeline,  hardware::device>();
+    hardware_handler_.add_dependency<hardware::copy_timeline,     hardware::device>();
+    hardware_handler_.add_dependency<hardware::depth_target,      hardware::device>();
+    hardware_handler_.add_dependency<hardware::depth_target,      hardware::descriptor_heap>();
+    if (hwnd) //~ very very rare to not have this!
         hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 
     //~ initialize in correct order
@@ -464,7 +467,10 @@ void graphics::impl::process_pending_events()
         {
             if (swapchain_.resize(w, h))
             {
-                LOG_INFO("swapchain handled window resize {}x{}", w, h);
+                //~ the depth target shares the render resolution keeping it matching
+                (void)depth_.resize(w, h);
+
+                LOG_INFO("swapchain and depth handled window resize {}x{}", w, h);
                 std::lock_guard lock(display_mutex_);
                 current_settings_.width  = w;
                 current_settings_.height = h;
@@ -481,15 +487,32 @@ void graphics::impl::process_pending_events()
 
 void graphics::impl::rebuild_hardware()
 {
-    //~ parent to child order so a device rebuild lands before its dependents
+    //~ only a device loss can force rebuilding
+    if (not device_.need_rebuild()) return;
+
+    LOG_WARN("device flagged for rebuild recreating the hardware graph");
+    deinit_dependents();
+    if (not device_.recreate()) //~ reuses the last good config
+        LOG_ERROR("device recreate failed");
+    init_dependents();
+}
+
+void graphics::impl::deinit_dependents() const
+{
+    // from leaf to parent node
+    for (auto it = hardware_handler_.rbegin(); it != hardware_handler_.rend(); ++it)
+    {
+        if (*it && *it != &device_) (*it)->deinitialize();
+    }
+}
+
+void graphics::impl::init_dependents() const
+{
+    //~ from root to child
     for (auto* hw : hardware_handler_)
     {
-        if (not hw->need_rebuild()) continue;
-
-        if (hw->initialize())
-            LOG_INFO("hardware '{}' rebuilt", hw->name());
-        else
-            LOG_ERROR("hardware '{}' rebuild failed", hw->name());
+        if (hw && hw != &device_ && not hw->initialize())
+            LOG_ERROR("'{}' failed to rebuild after device recreate", hw->name());
     }
 }
 
@@ -499,7 +522,6 @@ void graphics::impl::subscribe_events()
     if (not d) return;
 
     d->subscribe<events::window_resized,            &impl::on_window_resized   >(*this);
-    d->subscribe<events::window_fullscreen_changed, &impl::on_window_fullscreen>(*this);
     d->subscribe<events::window_display_changed,    &impl::on_display_changed  >(*this);
     d->subscribe<events::device_recreated,          &impl::on_device_recreated >(*this);
     d->subscribe<events::device_lost,               &impl::on_device_lost      >(*this);
@@ -511,7 +533,6 @@ void graphics::impl::unsubscribe_events()
     if (not d) return;
 
     d->unsubscribe<events::window_resized,            &impl::on_window_resized   >(*this);
-    d->unsubscribe<events::window_fullscreen_changed, &impl::on_window_fullscreen>(*this);
     d->unsubscribe<events::window_display_changed,    &impl::on_display_changed  >(*this);
     d->unsubscribe<events::device_recreated,          &impl::on_device_recreated >(*this);
     d->unsubscribe<events::device_lost,               &impl::on_device_lost      >(*this);
@@ -523,14 +544,6 @@ void graphics::impl::on_window_resized(const events::window_resized &event)
     pending_width_ .store(event.width,  std::memory_order_relaxed);
     pending_height_.store(event.height, std::memory_order_relaxed);
     resize_pending_.store(true,         std::memory_order_release);
-}
-
-void graphics::impl::on_window_fullscreen(const events::window_fullscreen_changed &event)
-{
-    //~ the window already snapped to or off the monitor which fired
-    //~ window_resized the swapchain follows through that resize path
-    LOG_INFO("window fullscreen {} swapchain will follow via resize",
-        event.fullscreen ? "on" : "off");
 }
 
 void graphics::impl::on_display_changed(const events::window_display_changed &event)
@@ -607,11 +620,17 @@ void graphics::impl::apply_display_settings(const display_settings& settings)
         info.allow_warp_fallback = true;
 
         LOG_INFO("switching gpu to adapter {}", settings.adapter_index);
+
+        //~ free dependents first so depth allocations descriptor slots and the
+        //~ like are released while the old device and allocator still live then
+        //~ recreate the device then rebuild them on the fresh one
+        deinit_dependents(); //~ caused me a headache
         if (not device_.recreate(info))
         {
             //~ recreate already fired device_recreate_failed menu can react
             LOG_ERROR("gpu switch failed staying where we can");
         }
+        init_dependents();
     }
 
     //~ its up a gpu switch above already rebuilt anyways

@@ -11,7 +11,6 @@
 #include "trishul/renderer/hardware/swapchain.h"
 #include "trishul/core/exception/dx_exception.h"
 #include "trishul/core/engine_assert.h"
-#include "trishul/core/service_locator.h"
 #include "trishul/event/dispatcher.h"
 #include "trishul/event/render_event.h"
 
@@ -53,7 +52,6 @@ namespace trishul::render::hardware
                 "swapchain config missing call set_config<swapchain_config> first");
             device_      = cfg->dev;
             create_info_ = cfg->info;
-            subscribe_events();
         }
 
         //~ already up and nobody flagged us nothing to do
@@ -128,8 +126,6 @@ namespace trishul::render::hardware
 
     void swapchain::deinitialize() noexcept
     {
-        unsubscribe_events();
-
         if (swapchain_ && current_mode_ == display_mode::exclusive_fullscreen)
         {
             swapchain_->SetFullscreenState(FALSE, nullptr);
@@ -614,33 +610,5 @@ namespace trishul::render::hardware
     IDXGISwapChain4* swapchain::dxgi_swapchain() const noexcept
     {
         return swapchain_.Get();
-    }
-
-    void swapchain::subscribe_events()
-    {
-        if (subscribed_) return;
-
-        auto* dispatcher = service_locator::try_get<events::dispatcher>();
-        if (!dispatcher) return;
-
-        //~ device swap invalidates our backbuffers rebuild on the new device
-        dispatcher->subscribe<events::device_recreated, &swapchain::event_device_recreated>(*this);
-        subscribed_ = true;
-    }
-
-    void swapchain::unsubscribe_events()
-    {
-        if (!subscribed_) return;
-
-        if (auto* dispatcher = service_locator::try_get<events::dispatcher>())
-            dispatcher->unsubscribe<events::device_recreated, &swapchain::event_device_recreated>(*this);
-
-        subscribed_ = false;
-    }
-
-    void swapchain::event_device_recreated()
-    {
-        //~ dispatcher thread just flag it the handler rebuild pass redoes us
-        mark_for_rebuild();
     }
 } // namespace trishul::render::hardware

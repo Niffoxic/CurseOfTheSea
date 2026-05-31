@@ -137,11 +137,6 @@ namespace trishul::render::hardware
         static display_format pick_closest_mode(const output_info& out,
                                                 const display_format& requested);
 
-        //~ events
-        void subscribe_events     ();
-        void unsubscribe_events   ();
-        void event_device_recreated();
-
     private:
         const device*         device_     { nullptr };
         swapchain_create_info create_info_{};
@@ -166,8 +161,7 @@ namespace trishul::render::hardware
 
         bool              tearing_supported_{ false };
         bool              is_occluded_      { false };
-        std::atomic<bool> need_rebuild_     { true };  //~ set by the device event
-        bool              subscribed_       { false }; //~ guards the dispatcher
+        std::atomic<bool> need_rebuild_     { true };
     };
 } // namespace trishul::render::hardware
 

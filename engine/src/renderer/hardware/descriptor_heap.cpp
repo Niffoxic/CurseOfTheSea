@@ -12,9 +12,6 @@
 #include "trishul/renderer/hardware/device.h"
 #include "trishul/utils/logger.h"
 #include "trishul/core/engine_assert.h"
-#include "trishul/core/service_locator.h"
-#include "trishul/event/dispatcher.h"
-#include "trishul/event/render_event.h"
 
 #include <d3d12.h>
 
@@ -35,7 +32,6 @@ namespace trishul::render::hardware
                 "descriptor heap config missing call set_config<descriptor_heap_config> first");
             device_             = cfg->dev;
             requested_capacity_ = cfg->capacity;
-            subscribe_events();
         }
 
         //~ already up and nobody flagged this so nothingelse to do
@@ -90,8 +86,6 @@ namespace trishul::render::hardware
 
     void descriptor_heap::deinitialize() noexcept
     {
-        unsubscribe_events();
-
         heap_.Reset();
         free_list_.clear();
         cpu_start_ = 0;
@@ -151,32 +145,5 @@ namespace trishul::render::hardware
     ID3D12DescriptorHeap* descriptor_heap::heap() const noexcept
     {
         return heap_.Get();
-    }
-
-    void descriptor_heap::subscribe_events()
-    {
-        if (subscribed_) return;
-
-        auto* dispatcher = service_locator::try_get<events::dispatcher>();
-        if (!dispatcher) return;
-
-        //~ device swap invalidates every descriptor so need to rebuild on the new device
-        dispatcher->subscribe<events::device_recreated, &descriptor_heap::event_device_recreated>(*this);
-        subscribed_ = true;
-    }
-
-    void descriptor_heap::unsubscribe_events()
-    {
-        if (!subscribed_) return;
-
-        if (auto* dispatcher = service_locator::try_get<events::dispatcher>())
-            dispatcher->unsubscribe<events::device_recreated, &descriptor_heap::event_device_recreated>(*this);
-
-        subscribed_ = false;
-    }
-
-    void descriptor_heap::event_device_recreated()
-    {
-        mark_for_rebuild(); //~ adapter changed so gotta workaround it
     }
 } // namespace trishul::render::hardware

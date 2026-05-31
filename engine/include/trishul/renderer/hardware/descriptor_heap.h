@@ -78,11 +78,6 @@ namespace trishul::render::hardware
     private:
         bool build();  //~ (re)create the heap on device
 
-        //~ events
-        void subscribe_events      ();
-        void unsubscribe_events    ();
-        void event_device_recreated();
-
     private:
         const device* device_            { nullptr };
         std::uint32_t requested_capacity_{ 0u };
@@ -97,8 +92,7 @@ namespace trishul::render::hardware
         std::uint32_t next_      { 0u };
         std::uint32_t in_flight_ { 0u };
 
-        std::atomic<bool> need_rebuild_{ true };  //~ set by the device event
-        bool              subscribed_  { false };
+        std::atomic<bool> need_rebuild_{ true };
     };
 } // namespace trishul::render::hardware
 

@@ -94,18 +94,11 @@ namespace trishul::render::hardware
         ID3D12Fence1* native() const noexcept;
 
     private:
-        //~ events
-        void subscribe_events    ();
-        void unsubscribe_events  ();
-        void event_device_created();
-
-    private:
         Microsoft::WRL::ComPtr<ID3D12Fence1> fence_{ nullptr };
         HANDLE                     event_        { nullptr };
         std::atomic<std::uint64_t> last_signaled_{ 0u };
-        std::atomic<bool>          need_rebuild_ { true };  //~ set by the device event
+        std::atomic<bool>          need_rebuild_ { true };  //~ set on teardown the handler recreates us
         bool                       first_init_   { true };  //~ first build vs rebuild
-        bool                       subscribed_   { false }; //~ guards the dispatcher hookup
     };
 } // namespace render::hardware
 

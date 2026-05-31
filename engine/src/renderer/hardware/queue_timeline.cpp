@@ -12,41 +12,37 @@
 #include "trishul/renderer/hardware/device.h"
 #include "trishul/utils/logger.h"
 #include "trishul/core/engine_assert.h"
-#include "trishul/core/service_locator.h"
-#include "trishul/event/dispatcher.h"
-#include "trishul/event/render_event.h"
 
 #include <d3d12.h>
 
 namespace trishul::render::hardware
 {
-    queue_timeline::~queue_timeline()
+    template<command_list_type Kind>
+    queue_timeline<Kind>::~queue_timeline()
     {
         deinitialize();
     }
 
-    bool queue_timeline::initialize()
+    template<command_list_type Kind>
+    bool queue_timeline<Kind>::initialize()
     {
-        //~ wires the config
+        //~ first call wires the config configures the owned fence and subscribes
         if (!device_)
         {
             const auto* cfg = config_as<queue_timeline_config>();
             ENGINE_ASSERT_MSG(cfg && cfg->dev,
                 "queue_timeline config missing call set_config<queue_timeline_config> first");
-            device_     = cfg->dev;
-            queue_kind_ = cfg->queue_kind;
-            label_      = cfg->label ? cfg->label : "";
+            device_ = cfg->dev;
 
-            fence_config fn{};
-            fn.dev = device_;
+            //~ the owned fence builds on the same device we keep driving its
+            //~ initialize the handler graph rebuild handles device swaps
             fence_.set_config(fence_config{ device_, 0u });
-            subscribe_events();
         }
 
-        //~ idempotent and rebuilds itself later if changes are there
+        //~ owned fence is idempotent and rebuilds itself when its flag is set
         if (not fence_.initialize())
         {
-            LOG_ERROR("queue_timeline '{}' fence init failed", label_);
+            LOG_ERROR("queue_timeline '{}' fence init failed", label());
             return false;
         }
 
@@ -57,7 +53,7 @@ namespace trishul::render::hardware
         queue_ = fetch_queue();
         if (!queue_)
         {
-            LOG_ERROR("queue_timeline '{}' could not fetch its queue", label_);
+            LOG_ERROR("queue_timeline '{}' could not fetch its queue", label());
             return false;
         }
 
@@ -65,91 +61,49 @@ namespace trishul::render::hardware
         return true;
     }
 
-    void queue_timeline::deinitialize() noexcept
+    template<command_list_type Kind>
+    void queue_timeline<Kind>::deinitialize() noexcept
     {
-        unsubscribe_events();
         fence_.deinitialize(); //~ owned tear it down with us
 
         queue_  = nullptr;
         device_ = nullptr;
-        label_.clear();
         need_rebuild_.store(true, std::memory_order_release); //~ reusable
     }
 
-    ID3D12CommandQueue* queue_timeline::fetch_queue() const
+    template<command_list_type Kind>
+    ID3D12CommandQueue* queue_timeline<Kind>::fetch_queue() const
     {
         if (!device_) return nullptr;
-        switch (queue_kind_)
-        {
-        case command_list_type::direct:  return device_->graphics_queue();
-        case command_list_type::compute: return device_->compute_queue();
-        case command_list_type::copy:    return device_->copy_queue();
-        }
-        return nullptr;
+
+        if constexpr (Kind == command_list_type::direct)
+            return device_->graphics_queue();
+        else if constexpr (Kind == command_list_type::compute)
+            return device_->compute_queue();
+        else
+            return device_->copy_queue();
     }
 
-    std::uint64_t queue_timeline::signal()
+    template<command_list_type Kind>
+    bool queue_timeline<Kind>::gpu_wait(const fence& producer_fence, const std::uint64_t value)
     {
-        if (!queue_) return 0;
-        return fence_.signal(queue_);
-    }
+        if (!queue_) return false;
 
-    bool queue_timeline::gpu_wait(const queue_timeline& producer,
-                                  const std::uint64_t   value)
-    {
-        if (!queue_ || !producer.fence_.native()) return false;
+        auto* native = producer_fence.native();
+        if (!native) return false;
 
-        if (const HRESULT hr = queue_->Wait(producer.fence_.native(), value); FAILED(hr))
+        if (const HRESULT hr = queue_->Wait(native, value); FAILED(hr))
         {
-            LOG_ERROR("'{}' wait on '{}' value {} failed {:08X}",
-                          label_, producer.label_, value,
-                          static_cast<std::uint32_t>(hr));
+            LOG_ERROR("'{}' gpu wait on value {} failed {:08X}",
+                          label(), value, static_cast<std::uint32_t>(hr));
             return false;
         }
         return true;
     }
 
-    bool queue_timeline::cpu_wait(
-        const std::uint64_t value,
-        const std::uint32_t timeout_ms) const
-    {
-        return fence_.wait(value, timeout_ms);
-    }
-
-    bool queue_timeline::is_complete(const std::uint64_t value) const
-    {
-        return fence_.is_completed(value);
-    }
-
-    std::uint64_t queue_timeline::completed_value() const
-    {
-        return fence_.completed_value();
-    }
-
-    void queue_timeline::subscribe_events()
-    {
-        if (subscribed_) return;
-
-        auto* dispatcher = service_locator::try_get<events::dispatcher>();
-        if (!dispatcher) return;
-
-        //~ rebuilds needed when the adapter changes
-        dispatcher->subscribe<events::device_recreated, &queue_timeline::event_device_recreated>(*this);
-        subscribed_ = true;
-    }
-
-    void queue_timeline::unsubscribe_events()
-    {
-        if (!subscribed_) return;
-
-        if (auto* dispatcher = service_locator::try_get<events::dispatcher>())
-            dispatcher->unsubscribe<events::device_recreated, &queue_timeline::event_device_recreated>(*this);
-
-        subscribed_ = false;
-    }
-
-    void queue_timeline::event_device_recreated()
-    {
-        mark_for_rebuild();
-    }
+    //~ the only three kinds that ever exist instantiate them here so render can
+    //~ link against them without pulling the definitions into its translation unit
+    template class queue_timeline<command_list_type::direct>;
+    template class queue_timeline<command_list_type::compute>;
+    template class queue_timeline<command_list_type::copy>;
 } // namespace trishul::render::hardware

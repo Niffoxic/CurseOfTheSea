@@ -12,8 +12,6 @@
 #include "trishul/renderer/hardware/device.h"
 #include "trishul/utils/logger.h"
 #include "trishul/core/engine_assert.h"
-#include "trishul/event/dispatcher.h"
-#include "trishul/event/render_event.h"
 #include "trishul/core/exception/dx_exception.h"
 
 #include <d3d12.h>
@@ -77,7 +75,6 @@ bool render::hardware::fence::initialize()
     if (first_init_)
     {
         last_signaled_.store(cfg->initial_value, std::memory_order_release);
-        subscribe_events();
         first_init_ = false;
     }
 
@@ -87,8 +84,6 @@ bool render::hardware::fence::initialize()
 
 void render::hardware::fence::deinitialize() noexcept
 {
-    unsubscribe_events();
-
     if (event_)
     {
         ::CloseHandle(event_);
@@ -211,32 +206,4 @@ ID3D12Fence1 * render::hardware::fence::native() const noexcept
         return nullptr;
     }
     return fence_.Get();
-}
-
-void render::hardware::fence::subscribe_events()
-{
-    if (subscribed_) return;
-
-    auto* dispatcher = service_locator::try_get<events::dispatcher>();
-    if (not dispatcher) return;
-
-    //~ sub to device recreated so we know to rebuild on a gpu swap
-    dispatcher->subscribe<events::device_recreated, &fence::event_device_created>(*this);
-    subscribed_ = true;
-}
-
-void render::hardware::fence::unsubscribe_events()
-{
-    if (not subscribed_) return;
-
-    if (auto* dispatcher = service_locator::try_get<events::dispatcher>())
-        dispatcher->unsubscribe<events::device_recreated, &fence::event_device_created>(*this);
-
-    subscribed_ = false;
-}
-
-void render::hardware::fence::event_device_created()
-{
-    //~ runs on the dispatcher thread just flag it the owner rebuilds us
-    mark_for_rebuild();
 }
