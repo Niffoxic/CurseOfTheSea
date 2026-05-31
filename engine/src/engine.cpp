@@ -263,11 +263,20 @@ void engine::impl::compute_fps(const float dt)
         fps_.main_thread_ms = (fps_accum_time_ * 1000.f)
             / static_cast<float>(fps_accum_frames_);
 
-        const auto message = std::format("fps {} {:.3f} ms", fps_.main_thread, fps_.main_thread_ms);
-        window_->set_debug(message);
-
         fps_accum_time_   = 0.f;
         fps_accum_frames_ = 0u;
+
+        //~ render render stats
+        render::gpu_stats gpu_stats = render_->gpu_statistics();
+        render::graphics_fps rt_fps = render_->frame_fps();
+
+        const std::string message = std::format(
+            "MT fps {} {:.3f} ms | RT fps {} {} ms | VRAM {:.1f}/{:.1f} MB",
+            fps_.main_thread, fps_.main_thread_ms,
+            rt_fps.fps, rt_fps.ms,
+            gpu_stats.memory.local_usage_mb, gpu_stats.memory.local_budget_mb);
+
+        window_->set_debug(message);
     }
 }
 

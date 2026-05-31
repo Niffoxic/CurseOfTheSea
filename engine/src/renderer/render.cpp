@@ -14,8 +14,10 @@
 #include "trishul/event/dispatcher.h"
 #include "trishul/core/engine_assert.h"
 #include "trishul/core/engine_config.h"
+#include "trishul/utils/timer.h"
 
 #include <d3d12.h>
+#include <D3D12MemAlloc.h>
 #include <thread>
 #include <mutex>
 #include <array>
@@ -89,6 +91,12 @@ struct graphics::impl
     void build_capabilities    ();
     void apply_display_settings(const display_settings& settings);
 
+    //~ refresh the gpu memory and pool stats snapshot render thread side
+    void build_gpu_stats       ();
+
+    //~ measure one render loop iteration and publish fps ms render thread side
+    void tick_frame_timing     ();
+
     //~ snapshots related stuff
     void publish_snapshot(); //~ on begin update
     bool acquire_snapshot(); //~ grabs pending if theres any that is
@@ -129,6 +137,16 @@ struct graphics::impl
     std::atomic<bool>                           resize_pending_{ false };
     std::atomic<std::uint32_t>                  pending_width_ { 0u };
     std::atomic<std::uint32_t>                  pending_height_{ 0u };
+
+    //~ gpu memory and pool stats render thread fills it main thread reads it
+    mutable std::mutex                          stats_mutex_;
+    gpu_stats                                   gpu_stats_{};
+    std::uint32_t                               stats_tick_{ 0u };
+
+    timer                                       frame_timer_{};
+    float                                       frame_ms_avg_{ 0.f };
+    std::atomic<int>                            render_fps_  { 0 };
+    std::atomic<int>                            render_ms_   { 0 };
 
     //~ render related
     struct
@@ -225,7 +243,12 @@ scene_snapshot& graphics::building_snapshot() const noexcept
 
 graphics_fps graphics::frame_fps() const noexcept
 {
-    return {};
+    if (not render_) return {};
+    return 
+    {
+        render_->render_fps_.load(std::memory_order_relaxed),
+        render_->render_ms_ .load(std::memory_order_relaxed)
+    };
 }
 
 display_capabilities graphics::display_options() const
@@ -263,6 +286,13 @@ void graphics::request_display_settings(const display_settings& settings)
         settings.manual_adapter, settings.adapter_index, settings.output_index);
 }
 
+gpu_stats graphics::gpu_statistics() const
+{
+    ENGINE_ASSERT_MSG(render_, "renderer gone did you deinitialize already?");
+    std::lock_guard lock(render_->stats_mutex_);
+    return render_->gpu_stats_;
+}
+
 void graphics::render_entry() const
 {
     ENGINE_ASSERT_MSG(render_, "This is a huge error please delete your os!");
@@ -283,8 +313,12 @@ void graphics::render_entry() const
         L"Trishul Renderer")
     );
 
+    //~ start the render clock 
+    render_->frame_timer_.reset();
+    render_->frame_timer_.set_target_fps(2048); //~ default max render fps
     while (render_->running_.load(std::memory_order_relaxed))
     {
+        render_->tick_frame_timing();
         render_->process_pending_events();
         render_->draw_frame(render_->snapshots_.latest());
     }
@@ -420,6 +454,7 @@ bool graphics::impl::init_bootstrap()
         current_settings_.adapter_index  = device_.current_adapter_info().adapter_index;
     }
     build_capabilities();
+    build_gpu_stats   ();
 
     LOG_INFO("DirectX 12 Created and Running Just Fine!");
     return true;
@@ -503,6 +538,65 @@ void graphics::impl::process_pending_events()
     }
 
     if (rebuild_caps) build_capabilities();
+
+    //~ refresh the stats snapshot every so often not on every spin its only
+    //~ for a debug overlay or the menu so coarse freshness is plenty anyways
+    if ((stats_tick_++ & 0x3Fu) == 0u) build_gpu_stats();
+}
+
+void graphics::impl::build_gpu_stats()
+{
+    gpu_stats s{};
+
+    //~ d3d12ma carries both the os budget and its own block allocation totals
+    //~ getbudget is the cheap cached query unlike a full statistics walk
+    if (auto* alloc = device_.allocator())
+    {
+        D3D12MA::Budget local{};
+        D3D12MA::Budget nonlocal{};
+        alloc->GetBudget(&local, &nonlocal);
+
+        constexpr double to_mb = 1.0 / (1024.0 * 1024.0);
+
+        s.memory.local_budget_mb    = static_cast<double>(local.BudgetBytes)    * to_mb;
+        s.memory.local_usage_mb     = static_cast<double>(local.UsageBytes)     * to_mb;
+        s.memory.nonlocal_budget_mb = static_cast<double>(nonlocal.BudgetBytes) * to_mb;
+        s.memory.nonlocal_usage_mb  = static_cast<double>(nonlocal.UsageBytes)  * to_mb;
+        s.memory.allocated_mb       = static_cast<double>(local.Stats.AllocationBytes + nonlocal.Stats.AllocationBytes) * to_mb;
+        s.memory.block_mb           = static_cast<double>(local.Stats.BlockBytes      + nonlocal.Stats.BlockBytes)      * to_mb;
+        s.memory.allocation_count   = local.Stats.AllocationCount + nonlocal.Stats.AllocationCount;
+        s.memory.block_count        = local.Stats.BlockCount      + nonlocal.Stats.BlockCount;
+    }
+
+    //~ upload arena pool churn the render thread owns these so reading here is safe
+    s.upload.free_staging      = uploader_.free_count();
+    s.upload.in_flight_staging = uploader_.in_flight_count();
+    s.upload.reused            = uploader_.reused_count();
+    s.upload.allocated         = uploader_.allocated_count();
+
+    //~ how many resources are parked in the deferred release queue
+    s.deferred_pending = releaser_.pending_count();
+
+    std::lock_guard lock(stats_mutex_);
+    gpu_stats_ = s;
+}
+
+void graphics::impl::tick_frame_timing()
+{
+    frame_timer_.step();
+    const float dt_ms = frame_timer_.delta_time_ms();
+
+    frame_ms_avg_ = (frame_ms_avg_ <= 0.f)
+        ? dt_ms
+        : frame_ms_avg_ * 0.9f + dt_ms * 0.1f;
+
+    const int ms  = static_cast<int>(frame_ms_avg_ + 0.5f);
+    const int fps = (frame_ms_avg_ > 0.f)
+        ? static_cast<int>(1000.f / frame_ms_avg_ + 0.5f)
+        : 0;
+
+    render_fps_.store(fps, std::memory_order_relaxed);
+    render_ms_ .store(ms,  std::memory_order_relaxed);
 }
 
 void graphics::impl::rebuild_hardware()

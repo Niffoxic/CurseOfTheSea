@@ -112,7 +112,7 @@ namespace trishul::render::hardware
         // afterward without any wait
         std::size_t recycle_completed();
 
-        //~ debugging stats TODO: gotta supply this to the end user
+        //~ debugging stats
         [[nodiscard]] std::size_t   free_count     () const noexcept;
         [[nodiscard]] std::size_t   in_flight_count() const noexcept;
         [[nodiscard]] std::uint64_t reused_count   () const noexcept { return reused_;    }

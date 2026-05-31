@@ -179,7 +179,7 @@ namespace trishul
     {
         next_deadline_ = 0;
         if (fps == 0u) { target_ticks_ = 0; return; }
-        fps = std::clamp<std::uint32_t>(fps, 1u, 1000u);
+        fps = std::clamp<std::uint32_t>(fps, 1u, 10000u);
         target_ticks_ = g_qpc_freq / static_cast<std::int64_t>(fps);
     }
 

@@ -16,6 +16,7 @@
 
 #include "render_snapshot.h"
 #include "display.h"
+#include "gpu_stats.h"
 #include "trishul/core/interface/subsystems.h"
 #include "trishul/core/interface/tickable.h"
 
@@ -67,6 +68,9 @@ namespace trishul::render
         //~ user pick for display changes and applies it
         //~ watch for device_recreated or device_recreate_failed events for the result
         void request_display_settings(const display_settings& settings);
+
+        //~ live gpu memory and pool stats
+        [[nodiscard]] gpu_stats gpu_statistics() const;
 
     private:
         //~ render thread entry
