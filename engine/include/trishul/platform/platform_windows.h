@@ -227,6 +227,10 @@ namespace trishul
         //~ saved windowed state for restoring out of fullscreen
         WINDOWPLACEMENT windowed_placement_{ sizeof(WINDOWPLACEMENT) };
         LONG            windowed_style_    { 0 };
+
+        //~ live resize debounce holding the swapchain resize until the draging ends
+        bool            resizing_          { false };
+        bool            pending_resize_    { false };
     };
 } // namespace trishul
 

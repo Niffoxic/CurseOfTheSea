@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <winerror.h>
+#include "trishul/renderer/hardware/types.h"
 
 namespace trishul::events
 {
@@ -42,6 +43,30 @@ namespace trishul::events
     {
         std::uint32_t count{};
     };
+
+    namespace swapchain
+    {
+        struct will_recreate {};
+        struct recreated
+        {
+            std::uint32_t width;
+            std::uint32_t height;
+            render::hardware::display_mode mode;
+        };
+
+        struct resized
+        {
+            std::uint32_t width; std::uint32_t height;
+        };
+
+        struct occluded      {};
+        struct restored      {};
+
+        struct mode_changed
+        {
+            render::hardware::display_mode new_mode;
+        };
+    } // swapchain
 } // namespace trishul::events
 
 #endif //CURSEOFTHESEA_DEVICE_EVENT_H

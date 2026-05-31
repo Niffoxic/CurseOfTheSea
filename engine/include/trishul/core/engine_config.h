@@ -78,6 +78,12 @@ namespace trishul::config
     static constexpr std::uint32_t POINT_SHADOW_RESOLUTION = 512u;
 
     static constexpr std::uint32_t RENDER_SCENE_SNAPSHOT = 3u;
+    static constexpr std::uint32_t MAX_BACKBUFFER_COUNT  = 3u;
+
+    constexpr static std::uint32_t FRAME_COUNT        = 3u;  //~ max frames in flight
+    constexpr static std::uint32_t MAX_SUBMIT_LISTS   = 8u; //~ max flight buffer
+
+
 } // namespace trishul config
 
 #endif //CURSEOFTHESEA_ENGINE_CONFIG_H

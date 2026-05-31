@@ -367,6 +367,23 @@ namespace trishul
 
         switch (message)
         {
+        case WM_ENTERSIZEMOVE:
+            //~ user grabbed the border hold swapchain resizes until they let it go
+            resizing_ = true;
+            return 0;
+
+        case WM_EXITSIZEMOVE:
+            //~ drag finished!
+            resizing_ = false;
+            if (pending_resize_ && window_size_.width > 0 && window_size_.height > 0)
+            {
+                pending_resize_ = false;
+                events::publish<events::window_resized>(
+                    static_cast<std::uint32_t>(window_size_.width),
+                    static_cast<std::uint32_t>(window_size_.height));
+            }
+            return 0;
+
         case WM_SIZE:
         {
             const auto width  = LOWORD(l_param);
@@ -374,22 +391,25 @@ namespace trishul
 
             if (w_param == SIZE_MINIMIZED)
             {
+                //~ minimized client area
                 screen_state_ |= screen_state::minimized;
                 events::publish<events::window_minimized>();
+                return 0;
             }
-            else
-            {
-                const bool was_minimized = has_flag(screen_state_, screen_state::minimized);
-                screen_state_ &= ~screen_state::minimized;
-                window_size_.width  = static_cast<int>(width);
-                window_size_.height = static_cast<int>(height);
 
-                if (was_minimized) events::publish<events::window_restored>();
+            const bool was_minimized = has_flag(screen_state_, screen_state::minimized);
+            screen_state_ &= ~screen_state::minimized;
+            window_size_.width  = static_cast<int>(width);
+            window_size_.height = static_cast<int>(height);
 
-                events::publish<events::window_resized>(
-                    static_cast<std::uint32_t>(width),
-                    static_cast<std::uint32_t>(height));
-            }
+            if (was_minimized) events::publish<events::window_restored>();
+            
+            if (width == 0 || height == 0) return 0;
+            if (resizing_) { pending_resize_ = true; return 0; }
+
+            events::publish<events::window_resized>(
+                static_cast<std::uint32_t>(width),
+                static_cast<std::uint32_t>(height));
             return 0;
         }
         case WM_MOVE:

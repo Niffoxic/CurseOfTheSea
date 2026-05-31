@@ -26,8 +26,26 @@
 #include "trishul/core/dependency_handler.h"
 #include "trishul/renderer/hardware/device.h"
 #include "trishul/renderer/hardware/fence.h"
+#include "trishul/renderer/hardware/swapchain.h"
+#include "trishul/platform/platform_windows.h"
 
 using namespace trishul::render;
+
+namespace
+{
+    //~ the users speaks window_mode the swapchain speaks display_mode
+    //~ types bridge the two so game side settings drive the hardware
+    hardware::display_mode to_hw_display_mode(const window_mode mode) noexcept
+    {
+        switch (mode)
+        {
+        case window_mode::borderless: return hardware::display_mode::borderless;
+        case window_mode::exclusive:  return hardware::display_mode::exclusive_fullscreen;
+        case window_mode::windowed:
+        default:                      return hardware::display_mode::windowed;
+        }
+    }
+} // namespace
 
 struct graphics::impl
 {
@@ -50,8 +68,9 @@ struct graphics::impl
 
     //~ event callbacks
     //~ windows events
-    void on_window_resized (const events::window_resized& event);
-    void on_display_changed(const events::window_display_changed& event);
+    void on_window_resized   (const events::window_resized& event);
+    void on_window_fullscreen(const events::window_fullscreen_changed& event);
+    void on_display_changed  (const events::window_display_changed& event);
 
     //~ device fired the gpu came back possibly on a different adapter
     void on_device_recreated(const events::device_recreated& event);
@@ -80,8 +99,9 @@ struct graphics::impl
 
     //~ hardware
     dependency_handler<hardware::interfaces> hardware_handler_{};
-    hardware::device device_{};
-    hardware::fence fence_  {};
+    hardware::device    device_   {};
+    hardware::fence     fence_    {};
+    hardware::swapchain swapchain_{};
 
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
@@ -92,6 +112,11 @@ struct graphics::impl
     std::atomic<bool>                           settings_dirty_{ false };
     std::atomic<bool>                           outputs_dirty_ { false };
     std::atomic<bool>                           caps_dirty_    { false };
+
+    //~ windows driven resize fullscreen
+    std::atomic<bool>                           resize_pending_{ false };
+    std::atomic<std::uint32_t>                  pending_width_ { 0u };
+    std::atomic<std::uint32_t>                  pending_height_{ 0u };
 
     //~ render related
     struct
@@ -273,12 +298,48 @@ bool graphics::impl::init_bootstrap()
     fence_info.initial_value = 0u;
     fence_.set_config(fence_info);
 
+    //~ swapchain needed window handle must be ready since
+    //~ renderer depends upon windows platform
+    HWND          hwnd   = nullptr;
+    std::uint32_t back_w = 1280u;
+    std::uint32_t back_h = 720u;
+    if (auto* window = service_locator::try_get<platform_window>())
+    {
+        hwnd = window->get_window_handle();
+        if (const auto sz = window->get_window_size<std::uint32_t>();
+            sz.width > 0u && sz.height > 0u)
+        {
+            back_w = sz.width;
+            back_h = sz.height;
+        }
+    }
+
     //~ register each hardware to the handler
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
-    
-    //~ build dependencies betweem hardwares
+
+    if (hwnd) //~ god knows who is playing my game without a SCREEN!
+    {
+        hardware::swapchain_config swap_info{};
+        swap_info.dev                = &device_;
+        swap_info.info.window_handle = hwnd;
+        swap_info.info.width         = back_w;
+        swap_info.info.height        = back_h;
+        swap_info.info.mode          = hardware::display_mode::windowed;
+        swap_info.info.frame_count   = config::SWAPCHAIN_BUFFER_COUNT;
+        swapchain_.set_config(swap_info);
+
+        hardware_handler_.register_type(&swapchain_);
+    }
+    else
+    {
+        LOG_WARN("no window handle swapchain not registered");
+    }
+
+    //~ build dependencies
     hardware_handler_.add_dependency<hardware::fence, hardware::device>();
+    if (hwnd)
+        hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 
     //~ initialize in correct order
     for (auto* hw : hardware_handler_)
@@ -353,6 +414,30 @@ void graphics::impl::process_pending_events()
     //~ reinitialize any hardware that raised need_rebuild
     rebuild_hardware();
 
+    //~ windows driven resize fullscreen toggle or resolution change the
+    //~ backbuffers gotta be matching the new client size before we draw again
+    if (resize_pending_.exchange(false, std::memory_order_acquire))
+    {
+        const std::uint32_t w = pending_width_ .load(std::memory_order_relaxed);
+        const std::uint32_t h = pending_height_.load(std::memory_order_relaxed);
+
+        if (swapchain_.dxgi_swapchain() && w > 0u && h > 0u &&
+            (w != swapchain_.width() || h != swapchain_.height()))
+        {
+            if (swapchain_.resize(w, h))
+            {
+                LOG_INFO("swapchain handled window resize {}x{}", w, h);
+                std::lock_guard lock(display_mutex_);
+                current_settings_.width  = w;
+                current_settings_.height = h;
+            }
+            else
+            {
+                LOG_ERROR("swapchain resize to {}x{} failed", w, h);
+            }
+        }
+    }
+
     if (rebuild_caps) build_capabilities();
 }
 
@@ -375,10 +460,11 @@ void graphics::impl::subscribe_events()
     auto* d = service_locator::try_get<events::dispatcher>();
     if (not d) return;
 
-    d->subscribe<events::window_resized,         &impl::on_window_resized  >(*this);
-    d->subscribe<events::window_display_changed, &impl::on_display_changed >(*this);
-    d->subscribe<events::device_recreated,       &impl::on_device_recreated>(*this);
-    d->subscribe<events::device_lost,            &impl::on_device_lost     >(*this);
+    d->subscribe<events::window_resized,            &impl::on_window_resized   >(*this);
+    d->subscribe<events::window_fullscreen_changed, &impl::on_window_fullscreen>(*this);
+    d->subscribe<events::window_display_changed,    &impl::on_display_changed  >(*this);
+    d->subscribe<events::device_recreated,          &impl::on_device_recreated >(*this);
+    d->subscribe<events::device_lost,               &impl::on_device_lost      >(*this);
 }
 
 void graphics::impl::unsubscribe_events()
@@ -386,15 +472,27 @@ void graphics::impl::unsubscribe_events()
     auto* d = service_locator::try_get<events::dispatcher>();
     if (not d) return;
 
-    d->unsubscribe<events::window_resized,         &impl::on_window_resized  >(*this);
-    d->unsubscribe<events::window_display_changed, &impl::on_display_changed >(*this);
-    d->unsubscribe<events::device_recreated,       &impl::on_device_recreated>(*this);
-    d->unsubscribe<events::device_lost,            &impl::on_device_lost     >(*this);
+    d->unsubscribe<events::window_resized,            &impl::on_window_resized   >(*this);
+    d->unsubscribe<events::window_fullscreen_changed, &impl::on_window_fullscreen>(*this);
+    d->unsubscribe<events::window_display_changed,    &impl::on_display_changed  >(*this);
+    d->unsubscribe<events::device_recreated,          &impl::on_device_recreated >(*this);
+    d->unsubscribe<events::device_lost,               &impl::on_device_lost      >(*this);
 }
 
 void graphics::impl::on_window_resized(const events::window_resized &event)
 {
+    //~ gonna be doing that on command process
+    pending_width_ .store(event.width,  std::memory_order_relaxed);
+    pending_height_.store(event.height, std::memory_order_relaxed);
+    resize_pending_.store(true,         std::memory_order_release);
+}
 
+void graphics::impl::on_window_fullscreen(const events::window_fullscreen_changed &event)
+{
+    //~ the window already snapped to or off the monitor which fired
+    //~ window_resized the swapchain follows through that resize path
+    LOG_INFO("window fullscreen {} swapchain will follow via resize",
+        event.fullscreen ? "on" : "off");
 }
 
 void graphics::impl::on_display_changed(const events::window_display_changed &event)
@@ -478,8 +576,40 @@ void graphics::impl::apply_display_settings(const display_settings& settings)
         }
     }
 
-    //~ output mode fullscreen vsync are swapchain state stored to wire later when I create swapchain
-    {    //~ caps refresh on a gpu switch rides the device_recreated
+    //~ its up a gpu switch above already rebuilt anyways
+    if (swapchain_.dxgi_swapchain())
+    {
+        switch (to_hw_display_mode(settings.mode))
+        {
+        case hardware::display_mode::windowed:
+            if (swapchain_.current_mode() != hardware::display_mode::windowed)
+                (void)swapchain_.set_display_mode(hardware::display_mode::windowed);
+            if (settings.width > 0u && settings.height > 0u &&
+                (settings.width  != swapchain_.width() ||
+                 settings.height != swapchain_.height()))
+                (void)swapchain_.set_windowed_size(settings.width, settings.height);
+            break;
+
+        case hardware::display_mode::borderless:
+            if (swapchain_.current_mode() != hardware::display_mode::borderless)
+                (void)swapchain_.set_display_mode(hardware::display_mode::borderless);
+            break;
+
+        case hardware::display_mode::exclusive_fullscreen:
+        {
+            hardware::display_format fmt{};
+            fmt.width               = settings.width;
+            fmt.height              = settings.height;
+            fmt.refresh_numerator   = settings.refresh_numerator;
+            fmt.refresh_denominator = settings.refresh_denominator;
+            (void)swapchain_.set_exclusive_mode(settings.output_index, fmt);
+            break;
+        }
+        }
+    }
+
+    //~ the applied settings vsync gonna be landing on the present
+    {
         std::lock_guard lock(display_mutex_);
         current_settings_               = settings;
         current_settings_.adapter_index = device_.current_adapter_info().adapter_index;
