@@ -17,8 +17,20 @@ add_library(trishul_engine SHARED
         src/renderer/hardware/deferred_releaser.cpp
         src/renderer/hardware/texture_manager.cpp
         src/renderer/hardware/buffer_manager.cpp
+        src/renderer/shaders/shader_compiler.cpp
+        src/renderer/shaders/shader_cache.cpp
+        src/renderer/shaders/root_sig_builder.cpp
+        src/renderer/shaders/storage/binary_storage.cpp
+        src/renderer/shaders/storage/json_storage.cpp
         src/renderer/cull/frustum.cpp
         src/renderer/cull/bvh.cpp
+        src/renderer/materials/material_registry.cpp
+        src/renderer/materials/material_root_sig.cpp
+        src/renderer/materials/pso_cache.cpp
+        src/renderer/particles/particle_system.cpp
+        src/renderer/textures/texture_baker.cpp
+        src/renderer/textures/texture_cache.cpp
+        src/renderer/utils/image_decode.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)

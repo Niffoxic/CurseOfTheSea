@@ -12,6 +12,7 @@
 
 #include <string>
 #include <d3dcompiler.h>
+#include <dxgiformat.h>
 
 #include "trishul/core/engine_config.h"
 #include "trishul/utils/logger.h"
