@@ -17,6 +17,8 @@ add_library(trishul_engine SHARED
         src/renderer/hardware/deferred_releaser.cpp
         src/renderer/hardware/texture_manager.cpp
         src/renderer/hardware/buffer_manager.cpp
+        src/renderer/cull/frustum.cpp
+        src/renderer/cull/bvh.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)
