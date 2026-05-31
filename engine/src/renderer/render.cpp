@@ -30,6 +30,7 @@
 #include "trishul/renderer/hardware/descriptor_heap.h"
 #include "trishul/renderer/hardware/queue_timeline.h"
 #include "trishul/renderer/hardware/depth_target.h"
+#include "trishul/renderer/hardware/upload_arena.h"
 #include "trishul/platform/platform_windows.h"
 
 using namespace trishul::render;
@@ -111,6 +112,7 @@ struct graphics::impl
     hardware::compute_timeline  compute_timeline_ {};
     hardware::copy_timeline     copy_timeline_    {};
     hardware::depth_target      depth_            {};
+    hardware::upload_arena      uploader_         {};
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
     mutable std::mutex                          display_mutex_;
@@ -344,6 +346,11 @@ bool graphics::impl::init_bootstrap()
     depth_info.height   = back_h;
     depth_.set_config(depth_info);
 
+    //~ upload arena batches gpu uploads on the copy queue builds on the device
+    hardware::upload_arena_config upload_info{};
+    upload_info.dev = &device_;
+    uploader_.set_config(upload_info);
+
     //~ register each hardware to the handler
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
@@ -352,6 +359,7 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.register_type(&compute_timeline_);
     hardware_handler_.register_type(&copy_timeline_);
     hardware_handler_.register_type(&depth_);
+    hardware_handler_.register_type(&uploader_);
 
     if (hwnd) //~ god knows who is playing my game without a SCREEN!
     {
@@ -379,6 +387,7 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.add_dependency<hardware::copy_timeline,     hardware::device>();
     hardware_handler_.add_dependency<hardware::depth_target,      hardware::device>();
     hardware_handler_.add_dependency<hardware::depth_target,      hardware::descriptor_heap>();
+    hardware_handler_.add_dependency<hardware::upload_arena,      hardware::device>();
     if (hwnd) //~ very very rare to not have this!
         hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 
