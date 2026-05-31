@@ -11,7 +11,7 @@
 #ifndef CURSEOFTHESEA_TIMER_H
 #define CURSEOFTHESEA_TIMER_H
 
-#include "trishul/core/interface/slot_map.h"
+#include "trishul/core/slot_map.h"
 
 #include <cstdint>
 #include <functional>

@@ -34,6 +34,7 @@
 #include "trishul/renderer/hardware/depth_target.h"
 #include "trishul/renderer/hardware/upload_arena.h"
 #include "trishul/renderer/hardware/deferred_releaser.h"
+#include "trishul/renderer/hardware/texture_manager.h"
 #include "trishul/platform/platform_windows.h"
 
 using namespace trishul::render;
@@ -123,6 +124,7 @@ struct graphics::impl
     hardware::depth_target      depth_            {};
     hardware::upload_arena      uploader_         {};
     hardware::deferred_releaser releaser_         {};
+    hardware::texture_manager   textures_         {};
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
     mutable std::mutex                          display_mutex_;
@@ -392,6 +394,15 @@ bool graphics::impl::init_bootstrap()
     releaser_info.bindless = &bindless_;
     releaser_.set_config(releaser_info);
 
+    //~ texture manager uploads through the arena registers
+    //~ srvs in the bindless heap and defers its frees through the releaser
+    hardware::texture_manager_config texture_info{};
+    texture_info.dev      = &device_;
+    texture_info.bindless = &bindless_;
+    texture_info.releaser = &releaser_;
+    texture_info.arena    = &uploader_;
+    textures_.set_config(texture_info);
+
     //~ register each hardware to the handler
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
@@ -402,6 +413,7 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.register_type(&depth_);
     hardware_handler_.register_type(&uploader_);
     hardware_handler_.register_type(&releaser_);
+    hardware_handler_.register_type(&textures_);
 
     if (hwnd) //~ god knows who is playing my game without a SCREEN!
     {
@@ -433,6 +445,14 @@ bool graphics::impl::init_bootstrap()
     //~ releaser frees allocations and returns slots so it tears down before anything elses
     hardware_handler_.add_dependency<hardware::deferred_releaser, hardware::device>();
     hardware_handler_.add_dependency<hardware::deferred_releaser, hardware::descriptor_heap>();
+    //~ textures come up last and tear down first they touch all four below the
+    //~ device and heap must outlive its frees the arena and releaser must exist
+    //~ before any texture is created or destroyed or will be having nightmare deadling with
+    //~ memory allocator
+    hardware_handler_.add_dependency<hardware::texture_manager,   hardware::device>();
+    hardware_handler_.add_dependency<hardware::texture_manager,   hardware::descriptor_heap>();
+    hardware_handler_.add_dependency<hardware::texture_manager,   hardware::upload_arena>();
+    hardware_handler_.add_dependency<hardware::texture_manager,   hardware::deferred_releaser>();
     if (hwnd) //~ very very rare to not have this!
         hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 

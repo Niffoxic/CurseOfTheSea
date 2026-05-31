@@ -43,6 +43,24 @@ namespace statics //~ niffoxic cross project helpers
         if (msg.empty()) msg = "Unknown DirectX error.";
         return msg;
     }
+
+    __forceinline static std::wstring to_wide(const std::string_view s)
+    {
+        if (s.empty()) return {};
+
+        const int len = MultiByteToWideChar(CP_UTF8, 0, s.data(),
+                                            static_cast<int>(s.size()), nullptr, 0);
+        std::wstring out(static_cast<std::size_t>(len), L'\0');
+        MultiByteToWideChar(
+            CP_UTF8,
+            0,
+            s.data(),
+            static_cast<int>(s.size()),
+                            out.data(),
+                            len
+        );
+        return out;
+    }
 } // statics
 
 #endif //CURSEOFTHESEA_STATICS_H
