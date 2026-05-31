@@ -79,8 +79,8 @@ namespace trishul::render::hardware
         bool build();  //~ (re)create the heap on device
 
         //~ events
-        void subscribe_events     ();
-        void unsubscribe_events   ();
+        void subscribe_events      ();
+        void unsubscribe_events    ();
         void event_device_recreated();
 
     private:
@@ -90,12 +90,12 @@ namespace trishul::render::hardware
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> heap_;
         std::vector<std::uint32_t>                   free_list_;
 
-        std::uint64_t cpu_start_ { 0 };
-        std::uint64_t gpu_start_ { 0 };
-        std::uint32_t stride_    { 0 };
-        std::uint32_t capacity_  { 0 };
-        std::uint32_t next_      { 0 };
-        std::uint32_t in_flight_ { 0 };
+        std::uint64_t cpu_start_ { 0u };
+        std::uint64_t gpu_start_ { 0u };
+        std::uint32_t stride_    { 0u };
+        std::uint32_t capacity_  { 0u };
+        std::uint32_t next_      { 0u };
+        std::uint32_t in_flight_ { 0u };
 
         std::atomic<bool> need_rebuild_{ true };  //~ set by the device event
         bool              subscribed_  { false };

@@ -28,6 +28,7 @@
 #include "trishul/renderer/hardware/fence.h"
 #include "trishul/renderer/hardware/swapchain.h"
 #include "trishul/renderer/hardware/descriptor_heap.h"
+#include "trishul/renderer/hardware/queue_timeline.h"
 #include "trishul/platform/platform_windows.h"
 
 using namespace trishul::render;
@@ -100,11 +101,13 @@ struct graphics::impl
 
     //~ hardware
     dependency_handler<hardware::interfaces> hardware_handler_{};
-    hardware::device          device_   {};
-    hardware::fence           fence_    {};
-    hardware::swapchain       swapchain_{};
-    hardware::descriptor_heap bindless_ {};
-
+    hardware::device          device_           {};
+    hardware::fence           fence_            {};
+    hardware::swapchain       swapchain_        {};
+    hardware::descriptor_heap bindless_         {};
+    hardware::queue_timeline  graphics_timeline_{};
+    hardware::queue_timeline  compute_timeline_ {};
+    hardware::queue_timeline  copy_timeline_    {};
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
     mutable std::mutex                          display_mutex_;
@@ -306,6 +309,28 @@ bool graphics::impl::init_bootstrap()
     heap_info.capacity = config::BINDLESS_CAPACITY;
     bindless_.set_config(heap_info);
 
+    //~ graphics queue timeline and other ones just needed the device and which
+    //~ queue to wrap refetches the queue on a gpu swap
+    hardware::queue_timeline_config timeline_info{};
+    timeline_info.dev        = &device_;
+    timeline_info.queue_kind = hardware::command_list_type::direct;
+    timeline_info.label      = "graphics timeline";
+    graphics_timeline_.set_config(timeline_info);
+
+    //~ compute queue timeline
+    hardware::queue_timeline_config compute_info{};
+    compute_info.dev        = &device_;
+    compute_info.queue_kind = hardware::command_list_type::compute;
+    compute_info.label      = "compute timeline";
+    compute_timeline_.set_config(compute_info);
+
+    //~ copy queue timeline
+    hardware::queue_timeline_config copy_info{};
+    copy_info.dev        = &device_;
+    copy_info.queue_kind = hardware::command_list_type::compute;
+    copy_info.label      = "compute timeline";
+    copy_timeline_.set_config(copy_info);
+
     //~ swapchain needed window handle must be ready since
     //~ renderer depends upon windows platform
     HWND          hwnd   = nullptr;
@@ -326,6 +351,9 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
     hardware_handler_.register_type(&bindless_);
+    hardware_handler_.register_type(&graphics_timeline_);
+    hardware_handler_.register_type(&compute_timeline_);
+    hardware_handler_.register_type(&copy_timeline_);
 
     if (hwnd) //~ god knows who is playing my game without a SCREEN!
     {
@@ -352,7 +380,7 @@ bool graphics::impl::init_bootstrap()
         hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 
     //~ initialize in correct order
-    for (auto* hw : hardware_handler_)
+    for (auto* hw: hardware_handler_)
     {
         if (not hw->initialize())
         {

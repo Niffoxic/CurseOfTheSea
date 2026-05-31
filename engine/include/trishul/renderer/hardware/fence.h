@@ -28,7 +28,7 @@ namespace trishul::render::hardware
     //~ will be assigned via the renderer at the time of bootstrap
     struct fence_config
     {
-        device*       dev          { nullptr };
+        const device* dev          { nullptr };
         std::uint64_t initial_value{ 0u };
     };
 
