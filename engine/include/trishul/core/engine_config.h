@@ -83,6 +83,13 @@ namespace trishul::config
     //~ shader visible cbv srv uav slots for the bindless heap
     static constexpr std::uint32_t BINDLESS_CAPACITY     = 65536u;
 
+    //~ engine wide depth pipeline every pso and the shader cache agree on these
+    //~ so the dsv format never drifts from what a pso baked DEPTH_STATE packs
+    //~ bit0 depth enable bit1 depth write bits4..7 the compare func GREATER 5
+    //~ for our reversed z setup
+    static constexpr std::uint32_t DEPTH_FORMAT = 20u; //~ DXGI_FORMAT_D32_FLOAT_S8X24_UINT
+    static constexpr std::uint32_t DEPTH_STATE  = (1u << 0) | (1u << 1) | (5u << 4);
+
     constexpr static std::uint32_t FRAME_COUNT        = 3u;  //~ max frames in flight
     constexpr static std::uint32_t MAX_SUBMIT_LISTS   = 8u; //~ max flight buffer
 
