@@ -14,6 +14,7 @@ add_library(trishul_engine SHARED
         src/renderer/hardware/queue_timeline.cpp
         src/renderer/hardware/depth_target.cpp
         src/renderer/hardware/upload_arena.cpp
+        src/renderer/hardware/deferred_releaser.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)

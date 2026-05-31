@@ -31,6 +31,7 @@
 #include "trishul/renderer/hardware/queue_timeline.h"
 #include "trishul/renderer/hardware/depth_target.h"
 #include "trishul/renderer/hardware/upload_arena.h"
+#include "trishul/renderer/hardware/deferred_releaser.h"
 #include "trishul/platform/platform_windows.h"
 
 using namespace trishul::render;
@@ -113,6 +114,7 @@ struct graphics::impl
     hardware::copy_timeline     copy_timeline_    {};
     hardware::depth_target      depth_            {};
     hardware::upload_arena      uploader_         {};
+    hardware::deferred_releaser releaser_         {};
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
     mutable std::mutex                          display_mutex_;
@@ -351,6 +353,11 @@ bool graphics::impl::init_bootstrap()
     upload_info.dev = &device_;
     uploader_.set_config(upload_info);
 
+    //~ deferred releaser returns freed descriptor slots to the bindless heap
+    hardware::deferred_releaser_config releaser_info{};
+    releaser_info.bindless = &bindless_;
+    releaser_.set_config(releaser_info);
+
     //~ register each hardware to the handler
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
@@ -360,6 +367,7 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.register_type(&copy_timeline_);
     hardware_handler_.register_type(&depth_);
     hardware_handler_.register_type(&uploader_);
+    hardware_handler_.register_type(&releaser_);
 
     if (hwnd) //~ god knows who is playing my game without a SCREEN!
     {
@@ -388,6 +396,9 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.add_dependency<hardware::depth_target,      hardware::device>();
     hardware_handler_.add_dependency<hardware::depth_target,      hardware::descriptor_heap>();
     hardware_handler_.add_dependency<hardware::upload_arena,      hardware::device>();
+    //~ releaser frees allocations and returns slots so it tears down before anything elses
+    hardware_handler_.add_dependency<hardware::deferred_releaser, hardware::device>();
+    hardware_handler_.add_dependency<hardware::deferred_releaser, hardware::descriptor_heap>();
     if (hwnd) //~ very very rare to not have this!
         hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 
