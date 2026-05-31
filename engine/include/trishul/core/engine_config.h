@@ -80,6 +80,9 @@ namespace trishul::config
     static constexpr std::uint32_t RENDER_SCENE_SNAPSHOT = 3u;
     static constexpr std::uint32_t MAX_BACKBUFFER_COUNT  = 3u;
 
+    //~ shader visible cbv srv uav slots for the bindless heap
+    static constexpr std::uint32_t BINDLESS_CAPACITY     = 65536u;
+
     constexpr static std::uint32_t FRAME_COUNT        = 3u;  //~ max frames in flight
     constexpr static std::uint32_t MAX_SUBMIT_LISTS   = 8u; //~ max flight buffer
 

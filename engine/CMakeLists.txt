@@ -10,6 +10,7 @@ add_library(trishul_engine SHARED
         src/core/exception/dx_exception.cpp
         src/renderer/hardware/fence.cpp
         src/renderer/hardware/swapchain.cpp
+        src/renderer/hardware/descriptor_heap.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)

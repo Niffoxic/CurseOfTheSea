@@ -27,6 +27,7 @@
 #include "trishul/renderer/hardware/device.h"
 #include "trishul/renderer/hardware/fence.h"
 #include "trishul/renderer/hardware/swapchain.h"
+#include "trishul/renderer/hardware/descriptor_heap.h"
 #include "trishul/platform/platform_windows.h"
 
 using namespace trishul::render;
@@ -99,9 +100,10 @@ struct graphics::impl
 
     //~ hardware
     dependency_handler<hardware::interfaces> hardware_handler_{};
-    hardware::device    device_   {};
-    hardware::fence     fence_    {};
-    hardware::swapchain swapchain_{};
+    hardware::device          device_   {};
+    hardware::fence           fence_    {};
+    hardware::swapchain       swapchain_{};
+    hardware::descriptor_heap bindless_ {};
 
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
@@ -298,6 +300,12 @@ bool graphics::impl::init_bootstrap()
     fence_info.initial_value = 0u;
     fence_.set_config(fence_info);
 
+    //~ bindless cbv srv uav heap also builds straight on the device
+    hardware::descriptor_heap_config heap_info{};
+    heap_info.dev      = &device_;
+    heap_info.capacity = config::BINDLESS_CAPACITY;
+    bindless_.set_config(heap_info);
+
     //~ swapchain needed window handle must be ready since
     //~ renderer depends upon windows platform
     HWND          hwnd   = nullptr;
@@ -317,6 +325,7 @@ bool graphics::impl::init_bootstrap()
     //~ register each hardware to the handler
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
+    hardware_handler_.register_type(&bindless_);
 
     if (hwnd) //~ god knows who is playing my game without a SCREEN!
     {
@@ -337,7 +346,8 @@ bool graphics::impl::init_bootstrap()
     }
 
     //~ build dependencies
-    hardware_handler_.add_dependency<hardware::fence, hardware::device>();
+    hardware_handler_.add_dependency<hardware::fence,           hardware::device>();
+    hardware_handler_.add_dependency<hardware::descriptor_heap, hardware::device>();
     if (hwnd)
         hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 
