@@ -11,10 +11,12 @@
 #ifndef CURSEOFTHESEA_COMMAND_CONTEXT_H
 #define CURSEOFTHESEA_COMMAND_CONTEXT_H
 
-
+#include <atomic>
 #include <cstdint>
 #include <wrl/client.h>
+
 #include "types.h"
+#include "trishul/core/interface/hardware.h"
 
 struct ID3D12CommandAllocator;
 struct ID3D12GraphicsCommandList7;
@@ -24,11 +26,19 @@ namespace trishul::render::hardware
 {
     class device;
 
-    class command_context final
+    //~ config need to initialize and rebuild
+    struct command_context_config
+    {
+        const device*     dev  { nullptr };
+        command_list_type type { command_list_type::direct };
+    };
+
+    //~ one allocator plus one list living on the hardware interface
+    class command_context final : public interfaces
     {
     public:
          command_context() = default;
-        ~command_context();
+        ~command_context() override;
 
         command_context(const command_context&) = delete;
         command_context(command_context&&)      = delete;
@@ -36,9 +46,22 @@ namespace trishul::render::hardware
         command_context& operator=(const command_context&) = delete;
         command_context& operator=(command_context&&)      = delete;
 
+        //~ lifecycle
         [[nodiscard]]
-        bool initialize  (const device& dev, command_list_type type = command_list_type::direct);
-        void deinitialize() noexcept;
+        bool initialize  ()          override;
+        void deinitialize() noexcept override;
+
+        [[nodiscard]] bool need_rebuild() const noexcept override
+        {
+            return need_rebuild_.load(std::memory_order_acquire);
+        }
+        [[nodiscard]] const char* name() const noexcept override { return "command_context"; }
+
+        //~ flags a rebuild
+        void mark_for_rebuild() noexcept
+        {
+            need_rebuild_.store(true, std::memory_order_release);
+        }
 
         //~ reset the allocator and the list for a fresh frame
         // wait for gpu to finish work before working on it
@@ -58,11 +81,18 @@ namespace trishul::render::hardware
 
         [[nodiscard]] ID3D12GraphicsCommandList7* list() const noexcept;
 
+        //~ true once an allocator and list actually exist on the device
+        [[nodiscard]] bool is_valid         () const noexcept { return list_ != nullptr; }
+        //~ true while were recording between reset and close
+        [[nodiscard]] bool is_recording     () const noexcept { return is_open_; }
+        [[nodiscard]] command_list_type type() const noexcept { return type_; }
+
     private:
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator>     allocator_;
         Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7> list_;
         command_list_type                                  type_    { command_list_type::direct };
         bool                                               is_open_ { false };
+        std::atomic<bool>                                  need_rebuild_{ true };
     };
 } // namespace trishul::render::hardware
 

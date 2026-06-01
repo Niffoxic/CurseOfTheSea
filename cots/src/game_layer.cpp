@@ -24,7 +24,7 @@
 #include <string>
 #include <windows.h>
 
-namespace cots
+namespace trishul
 {
     namespace
     {

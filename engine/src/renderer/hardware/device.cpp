@@ -800,8 +800,8 @@ void device::enumerate_outputs()
         {
             nagged = true;
             MessageBoxA(nullptr,
-                "Respectfully play my game on your PC!",
-                "YO! PROFESSOR? PLAYING ON A LAPTOP!?", MB_OK);
+                "Respectfully play my game on a PC!",
+                "YO!! PLAYING ON A LAPTOP!?", MB_OK);
         }
 
         std::vector<adapter_info> request_adapters;

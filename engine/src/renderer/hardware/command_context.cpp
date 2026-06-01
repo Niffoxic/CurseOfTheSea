@@ -23,19 +23,27 @@ namespace trishul::render::hardware
         deinitialize();
     }
 
-    bool command_context::initialize(const device& dev, const command_list_type type)
+    bool command_context::initialize()
     {
         if (list_) return true;
 
-        auto* d3d = dev.d3d12_device();
+        //~ config
+        const auto* cfg = config_as<command_context_config>();
+        if (!cfg || !cfg->dev)
+        {
+            LOG_ERROR("command_context missing config or device");
+            return false;
+        }
+
+        auto* d3d = cfg->dev->d3d12_device();
         if (!d3d)
         {
             LOG_ERROR("device not initialized");
             return false;
         }
 
-        type_ = type;
-        const D3D12_COMMAND_LIST_TYPE d3d_type = statics::to_d3d12(type);
+        type_ = cfg->type;
+        const D3D12_COMMAND_LIST_TYPE d3d_type = statics::to_d3d12(type_);
 
         try
         {
@@ -54,6 +62,8 @@ namespace trishul::render::hardware
 
             (void)allocator_->SetName(L"COTS Command Allocator");
             (void)list_     ->SetName(L"COTS Command List");
+
+            need_rebuild_.store(false, std::memory_order_release);
             return true;
         }
         catch (const exception::directx& e)
@@ -73,6 +83,13 @@ namespace trishul::render::hardware
 
     bool command_context::reset()
     {
+        //~ no device backing yet nothing to reset bail before the null deref
+        if (!allocator_ || !list_)
+        {
+            LOG_WARN("reset on an uninitialized command_context");
+            return false;
+        }
+
         if (is_open_)
         {
             LOG_WARN("reset called while list still open");
@@ -81,14 +98,14 @@ namespace trishul::render::hardware
 
         if (const HRESULT alloc_hr = allocator_->Reset(); FAILED(alloc_hr))
         {
-            LOG_ERROR("allocator Reset failed (hr=0x{:08X})",
+            LOG_ERROR("allocator Reset failed {:08X}",
                           static_cast<std::uint32_t>(alloc_hr));
             return false;
         }
 
         if (const HRESULT list_hr = list_->Reset(allocator_.Get(), nullptr); FAILED(list_hr))
         {
-            LOG_ERROR("list Reset failed (hr=0x{:08X})",
+            LOG_ERROR("list Reset failed {:08X}",
                           static_cast<std::uint32_t>(list_hr));
             return false;
         }
@@ -99,11 +116,12 @@ namespace trishul::render::hardware
 
     bool command_context::close()
     {
+        if (!list_)    return false;
         if (!is_open_) return true;
 
         if (const HRESULT hr = list_->Close(); FAILED(hr))
         {
-            LOG_ERROR("Close failed (hr=0x{:08X})",
+            LOG_ERROR("Close failed {:08X}",
                           static_cast<std::uint32_t>(hr));
             return false;
         }

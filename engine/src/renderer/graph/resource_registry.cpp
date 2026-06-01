@@ -29,9 +29,9 @@ namespace trishul::render::graph
         const auto index = static_cast<std::uint32_t>(entries_.size());
         const std::uint32_t gen   = next_generation_++;
 
-        std::string default_name = "No Name: " + std::to_string(index);
         entry e{};
-        e.debug_name        = debug_name ? debug_name : default_name;
+        //~ only cook up a placeholder name when the caller couldnt be bothered
+        e.debug_name        = debug_name ? debug_name : ("No Name: " + std::to_string(index));
         e.provider          = std::move(provider);
         e.initial_usage     = initial_usage;
         e.preserve_contents = preserve_contents;

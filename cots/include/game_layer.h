@@ -18,7 +18,7 @@
 
 namespace trishul::events { class dispatcher; }
 
-namespace cots
+namespace trishul
 {
     class game_layer final: public gameplay::layer
     {

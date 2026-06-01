@@ -28,6 +28,6 @@ int WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     info.target_fps       = 360; //~ target main thread tho I dont think more than 60 is needed xD but for flexing 360
 
     gameplay::application app{ info };
-    app.push_layer(std::make_unique<cots::game_layer>());
+    app.push_layer(std::make_unique<trishul::game_layer>());
     return app.run();
 }

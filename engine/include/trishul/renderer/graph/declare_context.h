@@ -36,11 +36,13 @@ namespace trishul::render::graph
 
         void read(const resource_handle h, const resource_usage a) const noexcept
         {
+            if (!h.valid()) return; //~ dropping junk or else its gonna explode confusion
             reads_.push_back({h, a});
         }
 
         void write(const resource_handle h, const resource_usage u) const noexcept
         {
+            if (!h.valid()) return;
             writes_.push_back({ h, u });
         }
 

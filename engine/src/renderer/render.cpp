@@ -37,6 +37,8 @@
 #include "trishul/renderer/hardware/texture_manager.h"
 #include "trishul/renderer/hardware/buffer_manager.h"
 #include "trishul/platform/platform_windows.h"
+#include "trishul/renderer/hardware/command_context.h"
+#include "trishul/renderer/hardware/command_pool.h"
 
 using namespace trishul::render;
 
@@ -127,6 +129,7 @@ struct graphics::impl
     hardware::deferred_releaser releaser_         {};
     hardware::texture_manager   textures_         {};
     hardware::buffer_manager    buffers_          {};
+    hardware::command_pool      cmd_pool_         {};
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
     mutable std::mutex                          display_mutex_;
@@ -151,6 +154,26 @@ struct graphics::impl
     float                                       frame_ms_avg_{ 0.f };
     std::atomic<int>                            render_fps_  { 0 };
     std::atomic<int>                            render_ms_   { 0 };
+
+    //~ frame recording data the actual context pools live on cmd_pool_ now so a
+    //~ device swap rebuilds them for free this just tracks scheduling state
+    struct
+    {
+        struct per_queue_values
+        {
+            std::uint64_t graphics { 0u };
+            std::uint64_t compute  { 0u };
+            std::uint64_t copy     { 0u };
+        };
+        std::array<per_queue_values, config::FRAME_COUNT> queue_values{};
+        std::uint32_t index{ 0u };
+        std::vector<ID3D12CommandList*> submit_lists{};
+
+        void step() //~ increase the frame index
+        {
+            index = (index + 1u) % config::FRAME_COUNT;
+        }
+    } frame_;
 
     //~ render related
     struct
@@ -413,6 +436,12 @@ bool graphics::impl::init_bootstrap()
     buffer_info.arena    = &uploader_;
     buffers_.set_config(buffer_info);
 
+    //~ command pool only needs the device it grows its lists lazily per frame
+    //~ riding the handler means a gpu swap tears it down and rebuilds it for us
+    hardware::command_pool_config cmd_pool_info{};
+    cmd_pool_info.dev = &device_;
+    cmd_pool_.set_config(cmd_pool_info);
+
     //~ register each hardware to the handler
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
@@ -425,6 +454,7 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.register_type(&releaser_);
     hardware_handler_.register_type(&textures_);
     hardware_handler_.register_type(&buffers_);
+    hardware_handler_.register_type(&cmd_pool_);
 
     if (hwnd) //~ god knows who is playing my game without a SCREEN!
     {
@@ -468,6 +498,8 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.add_dependency<hardware::buffer_manager,    hardware::device>();
     hardware_handler_.add_dependency<hardware::buffer_manager,    hardware::upload_arena>();
     hardware_handler_.add_dependency<hardware::buffer_manager,    hardware::deferred_releaser>();
+    //~ pure device child lists are made and reset straight on it
+    hardware_handler_.add_dependency<hardware::command_pool,      hardware::device>();
     if (hwnd) //~ very very rare to not have this!
         hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 
@@ -611,6 +643,23 @@ void graphics::impl::build_gpu_stats()
 
     //~ how many resources are parked in the deferred release queue
     s.deferred_pending = releaser_.pending_count();
+
+    //~ smoothed frame timing the perf overlay reads it straight off here
+    s.timing.fps      = render_fps_.load(std::memory_order_relaxed);
+    s.timing.frame_ms = render_ms_ .load(std::memory_order_relaxed);
+
+    //~ bindless heap occupancy render thread owns the heap so this is safe
+    s.descriptors.capacity = bindless_.capacity();
+    s.descriptors.in_use   = bindless_.in_flight();
+
+    //~ command list churn split per queue handy to spot a frame spamming lists
+    const auto cmd = cmd_pool_.counters();
+    s.commands.direct_contexts  = cmd.direct_allocated;
+    s.commands.compute_contexts = cmd.compute_allocated;
+    s.commands.copy_contexts    = cmd.copy_allocated;
+    s.commands.direct_in_use    = cmd.direct_in_use;
+    s.commands.compute_in_use   = cmd.compute_in_use;
+    s.commands.copy_in_use      = cmd.copy_in_use;
 
     std::lock_guard lock(stats_mutex_);
     gpu_stats_ = s;

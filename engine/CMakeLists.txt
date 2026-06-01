@@ -33,6 +33,7 @@ add_library(trishul_engine SHARED
         src/renderer/utils/image_decode.cpp
         src/renderer/graph/resource_registry.cpp
         src/renderer/hardware/command_context.cpp
+        src/renderer/hardware/command_pool.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)

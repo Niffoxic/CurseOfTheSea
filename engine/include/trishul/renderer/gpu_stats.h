@@ -38,12 +38,40 @@ namespace trishul::render
         std::uint64_t allocated        { 0u }; //~ fresh allocations over the lifetime
     };
 
+    //~ what the player actually sees on a perf overlay smoothed already
+    struct frame_timing_stats
+    {
+        int fps     { 0 }; //~ rounded render thread fps
+        int frame_ms{ 0 }; //~ rounded ms per frame
+    };
+
+    //~ bindless heap occupancy so can watch the descriptor budget
+    struct descriptor_heap_stats
+    {
+        std::uint32_t capacity{ 0u }; //~ total shader visible slots
+        std::uint32_t in_use  { 0u }; //~ slots currently handed out
+    };
+
+    //~ how many command lists the pool is holding split by queue grows with load
+    struct command_pool_stats
+    {
+        std::uint32_t direct_contexts { 0u };
+        std::uint32_t compute_contexts{ 0u };
+        std::uint32_t copy_contexts   { 0u };
+        std::uint32_t direct_in_use   { 0u }; //~ lists recorded this frame
+        std::uint32_t compute_in_use  { 0u };
+        std::uint32_t copy_in_use     { 0u };
+    };
+
     //~ safe snapspot
     struct gpu_stats
     {
-        gpu_memory_info    memory;
-        upload_arena_stats upload;
-        std::uint64_t      deferred_pending{ 0u }; //~ resources queued for deferred release
+        gpu_memory_info       memory;
+        upload_arena_stats    upload;
+        std::uint64_t         deferred_pending{ 0u }; //~ resources queued for deferred release
+        frame_timing_stats    timing;
+        descriptor_heap_stats descriptors;
+        command_pool_stats    commands;
     };
 } // namespace trishul::render
 
