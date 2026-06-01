@@ -22,6 +22,8 @@
 #include <string_view>
 #include <vector>
 
+#include "trishul/renderer/hardware/types.h"
+
 namespace statics //~ niffoxic cross project helpers
 {
     __forceinline static std::string wide_to_utf8(const wchar_t* w)
@@ -192,6 +194,36 @@ namespace statics //~ niffoxic cross project helpers
             }
         }
         return out;
+    }
+
+    inline D3D12_COMMAND_LIST_TYPE to_d3d12(trishul::render::hardware::command_list_type t)
+    {
+        using trishul::render::hardware::command_list_type;
+        switch (t)
+        {
+        case command_list_type::compute: return D3D12_COMMAND_LIST_TYPE_COMPUTE;
+        case command_list_type::copy:    return D3D12_COMMAND_LIST_TYPE_COPY;
+        case command_list_type::direct:
+        default:                         return D3D12_COMMAND_LIST_TYPE_DIRECT;
+        }
+    }
+
+    inline D3D12_RESOURCE_STATES to_d3d12(trishul::render::hardware::resource_state s)
+    {
+        using trishul::render::hardware::resource_state;
+        switch (s)
+        {
+        case resource_state::render_target: return D3D12_RESOURCE_STATE_RENDER_TARGET;
+        case resource_state::present:       return D3D12_RESOURCE_STATE_PRESENT;
+        case resource_state::depth_write:   return D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        case resource_state::depth_read:    return D3D12_RESOURCE_STATE_DEPTH_READ;
+        case resource_state::shader_read:   return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        case resource_state::copy_source:   return D3D12_RESOURCE_STATE_COPY_SOURCE;
+        case resource_state::copy_dest:     return D3D12_RESOURCE_STATE_COPY_DEST;
+        case resource_state::unordered:     return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        case resource_state::common:
+        default:                            return D3D12_RESOURCE_STATE_COMMON;
+        }
     }
 } // statics
 
