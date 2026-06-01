@@ -15,7 +15,6 @@
 #include "trishul/core/engine_assert.h"
 #include "trishul/utils/logger.h"
 #include "trishul/utils/timer.h"
-
 #include "trishul/services.h"
 
 #include <windows.h>
@@ -50,9 +49,10 @@ struct engine::impl
     std::uint32_t  fps_accum_frames_{ 0u };
 
     //~ services
-    platform_window*  window_ = nullptr;
-    timer_manager*    timers_ = nullptr;
-    render::graphics* render_ = nullptr;
+    platform_window*           window_ = nullptr;
+    timer_manager*             timers_ = nullptr;
+    render::graphics*          render_ = nullptr;
+    render::mesh::mesh_registry* meshes_ = nullptr; //~ cpu mesh assets editor leans on this
 
     //~ loop thread priority saved for restore on shutdown
     int  prev_thread_priority_   { THREAD_PRIORITY_NORMAL };
@@ -168,9 +168,10 @@ fps_information engine::get_fps() const noexcept
 void engine::impl::initialize_services()
 {
     LOG_DEBUG("acquiring services");
-    window_ = service_locator::get<platform_window> ();
-    timers_ = service_locator::get<timer_manager>   ();
-    render_ = service_locator::get<render::graphics>();
+    window_ = service_locator::get<platform_window>            ();
+    timers_ = service_locator::get<timer_manager>              ();
+    render_ = service_locator::get<render::graphics>           ();
+    meshes_ = service_locator::get<render::mesh::mesh_registry>();
 
     frame_timer_.set_target_fps(create_info_.target_fps);
     if (create_info_.target_fps == 0u) LOG_DEBUG("frame cap uncapped");
@@ -187,9 +188,6 @@ void engine::impl::initialize_services()
 
     LOG_DEBUG("window config applied {}x{}",
         create_info_.window_width, create_info_.window_height);
-
-    //~ TODO: gotta initialize renderer! (gotta arch a smooth way of providing HWND without
-    // giving access to whole platform windows)
 }
 
 bool engine::impl::regulate_services()
@@ -270,11 +268,18 @@ void engine::impl::compute_fps(const float dt)
         render::gpu_stats gpu_stats = render_->gpu_statistics();
         render::graphics_fps rt_fps = render_->frame_fps();
 
+        //~ cpu mesh footprint
+        const render::mesh::mesh_stats ms =
+            meshes_ ? meshes_->stats() : render::mesh::mesh_stats{};
+
         const std::string message = std::format(
-            "MT fps {} {:.3f} ms | RT fps {} {} ms | VRAM {:.1f}/{:.1f} MB",
+            "MT fps {} {:.3f} ms | RT fps {} {} ms | VRAM {:.1f}/{:.1f} MB | "
+            "meshes {} verts {} {:.1f} MB",
             fps_.main_thread, fps_.main_thread_ms,
             rt_fps.fps, rt_fps.ms,
-            gpu_stats.memory.local_usage_mb, gpu_stats.memory.local_budget_mb);
+            gpu_stats.memory.local_usage_mb, gpu_stats.memory.local_budget_mb,
+            ms.loaded_meshes, ms.total_vertices,
+            static_cast<double>(ms.cpu_bytes) / (1024.0 * 1024.0));
 
         window_->set_debug(message);
     }

@@ -27,7 +27,7 @@ option(COTS_TEXTURES_USE_BAKED_IN_DEBUG
 
 #~ gpu based validation is opt in its brutally slow minutes to first frame and
 #~ spams the startup banner on every device create flip it on only when chasing
-#~ a descriptor or resource bug
+#~ a descriptor or resource bug TODO: Find a better gpu validator if there is any
 option(COTS_GPU_VALIDATION "Enable D3D12 GPU-based validation in debug builds" OFF)
 
 set(COTS_PROFILER_LEVEL "0" CACHE STRING

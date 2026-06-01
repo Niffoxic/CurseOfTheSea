@@ -93,6 +93,33 @@ function(cots_add_general_dependencies target)
     FetchContent_MakeAvailable(meshoptimizer)
     target_link_libraries(${target} PRIVATE meshoptimizer)
 
+    # tinyobjloader and FastNoise2
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
+    # tinyobjloader
+    FetchContent_Declare(
+            tinyobjloader
+            GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader.git
+            GIT_TAG v1.0.6
+            GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(tinyobjloader)
+    target_link_libraries(${target} PRIVATE tinyobjloader)
+
+    # FastNoise2 procedural terrain noise
+    set(FASTNOISE2_NOISETOOL OFF CACHE BOOL "" FORCE)
+    set(FASTNOISE2_TESTS     OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+            FastNoise2
+            GIT_REPOSITORY https://github.com/Auburn/FastNoise2.git
+            GIT_TAG v0.10.0-alpha
+            GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(FastNoise2)
+    target_link_libraries(${target} PRIVATE FastNoise)
+
+    unset(CMAKE_POLICY_VERSION_MINIMUM)
+
     include(animation)
 
     cots_link_ozz (${target} PUBLIC)

@@ -19,6 +19,12 @@
 #include <trishul/event/window_event.h>
 #include <trishul/renderer/render.h>
 
+#include <trishul/renderer/mesh/primitives.h>
+#include <trishul/renderer/mesh/terrain.h>
+#include <trishul/renderer/mesh/mesh_baker.h>
+#include <trishul/renderer/mesh/mesh_loader.h>
+#include <trishul/renderer/mesh/mesh_registry.h>
+
 #include <format>
 #include <print>
 #include <string>
@@ -130,6 +136,50 @@ namespace trishul
             //~ gpu switch result lands here device runs the recreate async
             dispatcher_->subscribe<device_recreated,       &game_layer::on_device_recreated>      (*this);
             dispatcher_->subscribe<device_recreate_failed, &game_layer::on_device_recreate_failed>(*this);
+        }
+
+        static constexpr bool k_run_mesh_selftest = true;
+        if constexpr (k_run_mesh_selftest)
+        {
+            namespace mesh = trishul::render::mesh;
+            auto* reg = trishul::service_locator::try_get<mesh::mesh_registry>();
+
+            auto report = [&](const char* label, const mesh::mesh_data& m)
+            {
+                std::println("mesh test {:<11} verts {:>6} indices {:>6} valid {}",
+                    label, m.vertex_count(), m.index_count(), m.valid());
+                if (reg) (void)reg->add(m);
+            };
+
+            report("cube",      mesh::primitives::cube());
+            report("plane",     mesh::primitives::plane(2.0f, 4u));
+            report("uv_sphere", mesh::primitives::uv_sphere());
+            report("ico_sphere",mesh::primitives::ico_sphere());
+            report("cylinder",  mesh::primitives::cylinder());
+            report("cone",      mesh::primitives::cone());
+            report("capsule",   mesh::primitives::capsule());
+
+            mesh::terrain_params tp{};
+            tp.resolution = 64u;
+            report("terrain",   mesh::generate_terrain(tp));
+
+            //~ bake load round trip on a primitive
+            const mesh::mesh_data src = mesh::primitives::cube();
+            const std::string cooked = "compiled/meshes/selftest_cube.cmesh";
+            if (mesh::bake_mesh_data(src, cooked))
+            {
+                mesh::mesh_data loaded;
+                if (mesh::load_mesh(cooked, loaded))
+                    std::println("mesh test bake/load ok verts {}=={} indices {}=={}",
+                        src.vertex_count(), loaded.vertex_count(),
+                        src.index_count(),  loaded.index_count());
+                else
+                    std::println("mesh test load FAILED");
+            }
+            else std::println("mesh test bake FAILED");
+
+            if (reg)
+                std::println("mesh test registry now holds {} meshes", reg->count());
         }
     }
 

@@ -18,6 +18,7 @@
 #include "utils/timer.h"
 #include "event/dispatcher.h"
 #include "renderer/render.h"
+#include "trishul/renderer/mesh/mesh_registry.h"
 
 namespace trishul
 {
@@ -32,7 +33,14 @@ namespace trishul
     namespace render
     {
         REGISTER_SERVICE(graphics)
+
+        namespace mesh
+        {
+            REGISTER_SERVICE(mesh_registry)
+        } // namespace mesh
     } // namespace render
+
+
 } // namespace trishul
 
 #endif //CURSEOFTHESEA_SERVICES_H

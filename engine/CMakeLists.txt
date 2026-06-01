@@ -39,6 +39,16 @@ add_library(trishul_engine SHARED
         src/renderer/graph/render_graph.cpp
         src/renderer/resource/hdr_target.cpp
         src/renderer/resource/constant_ring.cpp
+        src/renderer/mesh/mesh_data.cpp
+        src/renderer/mesh/mesh_registry.cpp
+        src/renderer/mesh/primitives.cpp
+        src/renderer/mesh/terrain.cpp
+        src/renderer/mesh/mesh_importer.cpp
+        src/renderer/mesh/obj_importer.cpp
+        src/renderer/mesh/gltf_importer.cpp
+        src/renderer/mesh/fbx_importer.cpp
+        src/renderer/mesh/mesh_loader.cpp
+        src/renderer/mesh/mesh_baker.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)
