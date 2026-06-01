@@ -34,6 +34,11 @@ add_library(trishul_engine SHARED
         src/renderer/graph/resource_registry.cpp
         src/renderer/hardware/command_context.cpp
         src/renderer/hardware/command_pool.cpp
+        src/renderer/pass/clear_pass.cpp
+        src/renderer/pass/present_pass.cpp
+        src/renderer/graph/render_graph.cpp
+        src/renderer/resource/hdr_target.cpp
+        src/renderer/resource/constant_ring.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)

@@ -76,8 +76,6 @@ namespace //~ niffoxic reusable device debug chunk
         //~ dont need obvious stuff its just spam at this point
         D3D12_MESSAGE_ID hide_ids[] =
         {
-            D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
-            D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
             D3D12_MESSAGE_ID_HEAP_ADDRESS_RANGE_INTERSECTS_MULTIPLE_BUFFERS,
         };
 

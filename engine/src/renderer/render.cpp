@@ -40,6 +40,12 @@
 #include "trishul/renderer/hardware/command_context.h"
 #include "trishul/renderer/hardware/command_pool.h"
 
+//~ render graph and the resources
+#include "trishul/renderer/resource/hdr_target.h"
+#include "trishul/renderer/graph/render_graph.h"
+#include "trishul/renderer/pass/clear_pass.h"
+#include "trishul/renderer/pass/present_pass.h"
+
 using namespace trishul::render;
 
 namespace
@@ -88,9 +94,16 @@ struct graphics::impl
     //~ device vanished I will try to rebuild but its unsafe!
     void on_device_lost(const events::device_lost& event);
 
+    //~ wire the starter render graph clear then present once the hardware is up
+    void build_render_graph    ();
+
+    //~ block until every queue has drained must happen before tearing any
+    //~ hardware down or the gpu chokes on a resource we yanked mid flight
+    void wait_for_gpu_idle     ();
+
     //~ hardware lifecycle render thread side
     void rebuild_hardware      ();  //~ in case some events happens which corrupts whole resources
-    void deinit_dependents     () const;  //~ from child to the parent
+    void deinit_dependents     ();  //~ from child to the parent flushes gpu first
     void init_dependents       () const;  //~ from parent to the child
     void build_capabilities    ();
     void apply_display_settings(const display_settings& settings);
@@ -130,6 +143,14 @@ struct graphics::impl
     hardware::texture_manager   textures_         {};
     hardware::buffer_manager    buffers_          {};
     hardware::command_pool      cmd_pool_         {};
+    resource::hdr_target        hdr_              {};
+
+    //~ the render graph and the handles passes declare against just keep adding
+    //~ passes between clear and present and the graph sorts the barriers
+    graph::render_graph         graph_           {};
+    graph::resource_handle      backbuffer_handle_{};
+    graph::resource_handle      depth_handle_    {};
+    bool                        graph_built_     { false };
     //~ later will be using it for main menu basically display settings
     //~ changes get accounted
     mutable std::mutex                          display_mutex_;
@@ -154,6 +175,10 @@ struct graphics::impl
     float                                       frame_ms_avg_{ 0.f };
     std::atomic<int>                            render_fps_  { 0 };
     std::atomic<int>                            render_ms_   { 0 };
+
+    //~ raw timing the graph feeds passes dt drives the fixed rate pacers
+    float                                       last_dt_seconds_{ 0.f };
+    double                                      elapsed_seconds_{ 0.0 };
 
     //~ frame recording data the actual context pools live on cmd_pool_ now so a
     //~ device swap rebuilds them for free this just tracks scheduling state
@@ -231,6 +256,10 @@ void graphics::deinitialize() noexcept
 
     //~ thread is dead now safe to drop subscriptions and tear hardware down
     render_->unsubscribe_events();
+
+    //~ last frame may still be in flight on the gpu wait it out before deleting
+    //~ anything it could still be reading
+    render_->wait_for_gpu_idle();
 
     //~ deintialize whole hardwares
     for (auto it = render_->hardware_handler_.rbegin();
@@ -442,6 +471,16 @@ bool graphics::impl::init_bootstrap()
     cmd_pool_info.dev = &device_;
     cmd_pool_.set_config(cmd_pool_info);
 
+    //~ hdr scene color target sized to the backbuffer forward passes render into
+    //~ it then tonemap maps it down to the swapchain rides the handler so an
+    //~ adapter swap rebuilds it for free just like the depth target
+    resource::hdr_target_config hdr_info{};
+    hdr_info.dev      = &device_;
+    hdr_info.bindless = &bindless_;
+    hdr_info.width    = back_w;
+    hdr_info.height   = back_h;
+    hdr_.set_config(hdr_info);
+
     //~ register each hardware to the handler
     hardware_handler_.register_type(&device_);
     hardware_handler_.register_type(&fence_);
@@ -455,6 +494,7 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.register_type(&textures_);
     hardware_handler_.register_type(&buffers_);
     hardware_handler_.register_type(&cmd_pool_);
+    hardware_handler_.register_type(&hdr_);
 
     if (hwnd) //~ god knows who is playing my game without a SCREEN!
     {
@@ -500,6 +540,9 @@ bool graphics::impl::init_bootstrap()
     hardware_handler_.add_dependency<hardware::buffer_manager,    hardware::deferred_releaser>();
     //~ pure device child lists are made and reset straight on it
     hardware_handler_.add_dependency<hardware::command_pool,      hardware::device>();
+    //~ hdr target needs the device to allocate and the heap for its srv slot
+    hardware_handler_.add_dependency<resource::hdr_target,        hardware::device>();
+    hardware_handler_.add_dependency<resource::hdr_target,        hardware::descriptor_heap>();
     if (hwnd) //~ very very rare to not have this!
         hardware_handler_.add_dependency<hardware::swapchain, hardware::device>();
 
@@ -522,14 +565,108 @@ bool graphics::impl::init_bootstrap()
     }
     build_capabilities();
     build_gpu_stats   ();
+    build_render_graph();
 
     LOG_INFO("DirectX 12 Created and Running Just Fine!");
     return true;
 }
 
+void graphics::impl::build_render_graph()
+{
+    if (graph_built_) return;
+    if (!swapchain_.dxgi_swapchain()) return; //~ no screen no graph nothing to draw
+
+    //~ import the backbuffer as a provider so the rotating buffer and its rtv
+    //~ are always whatever the swapchain hands us this frame the graph tracks
+    //~ its barrier state by the actual resource pointer so the flip just works
+    backbuffer_handle_ = graph_.import(
+        "backbuffer",
+        graph::resource_usage::present, //~ swapchain hands it back in present
+        [this]() -> graph::resource_view
+        {
+            graph::resource_view v{};
+            v.resource    = swapchain_.current_backbuffer();
+            v.view_handle = swapchain_.current_rtv_handle();
+            v.width       = swapchain_.width();
+            v.height      = swapchain_.height();
+            return v;
+        });
+
+    //~ depth target lives on the hardware handler we just point a provider at it
+    depth_handle_ = graph_.import(
+        "depth",
+        graph::resource_usage::common,
+        [this]() -> graph::resource_view
+        {
+            graph::resource_view v{};
+            v.resource    = depth_.resource();
+            v.view_handle = depth_.dsv_handle();
+            v.width       = depth_.width();
+            v.height      = depth_.height();
+            return v;
+        });
+
+    //~ the starter pipeline clear then present drop your passes between these
+    //~ two and the graph figures out the barriers no manual transitions
+    (void)graph_.add_pass<passes::clear_pass>(backbuffer_handle_, depth_handle_);
+    (void)graph_.add_pass<passes::present_pass>(backbuffer_handle_);
+
+    graph_built_ = true;
+    LOG_INFO("render graph built with {} passes", graph_.pass_count());
+}
+
 void graphics::impl::draw_frame(const scene_snapshot &snapshot)
 {
+    if (!graph_built_ || !swapchain_.dxgi_swapchain()) return;
 
+    //~ occluded eg minimized skip the work but keep the thread breathing
+    if (!swapchain_.check_occlusion()) return;
+
+    const std::uint32_t fi = frame_.index;
+
+    //~ wait until the gpu is done with this slots allocators before reusing them
+    //~ keeps us at most FRAME_COUNT frames ahead first pass through value is zero
+    //~ so this returns straight away
+    (void)graphics_timeline_.cpu_wait(frame_.queue_values[fi].graphics);
+
+    //~ recycle this slots lists then grab a fresh one to record into
+    cmd_pool_.begin_frame(fi);
+    auto* ctx = cmd_pool_.acquire(hardware::command_list_type::direct, fi);
+    if (!ctx) return;
+
+    //~ bind the bindless heap once every pass samples through it
+    ctx->set_descriptor_heap(bindless_.heap());
+
+    const graph::render_graph::frame_desc fd
+    {
+        *ctx,
+        snapshot,
+        swapchain_.width(),
+        swapchain_.height(),
+        fi,
+        last_dt_seconds_,
+        elapsed_seconds_
+    };
+    graph_.execute(fd);
+
+    if (!ctx->close()) return;
+
+    //~ submit then present on the graphics queue
+    ID3D12CommandList* lists[] = { ctx->list() };
+    graphics_timeline_.queue()->ExecuteCommandLists(1, lists);
+
+    //~ sync interval zero matches the uncapped render target vsync lands later
+    if (const auto pr = swapchain_.present(0);
+        pr == hardware::present_result::device_removed)
+    {
+        LOG_ERROR("present reported device removed flagging a rebuild");
+        device_.dump_device_removed();
+        device_.mark_for_rebuild();
+    }
+
+    //~ remember the fence value so this slot waits on it when it comes round again
+    frame_.queue_values[fi].graphics = graphics_timeline_.signal();
+    frame_.step();
 }
 
 void graphics::impl::record_frame(
@@ -589,10 +726,15 @@ void graphics::impl::process_pending_events()
         {
             if (swapchain_.resize(w, h))
             {
-                //~ the depth target shares the render resolution keeping it matching
+                //~ depth and hdr share the render resolution keep them matching
                 (void)depth_.resize(w, h);
+                (void)hdr_  .resize(w, h);
 
-                LOG_INFO("swapchain and depth handled window resize {}x{}", w, h);
+                //~ every backbuffer and target pointer just changed so the graph
+                //~ must forget the barrier state it was tracking
+                graph_.invalidate();
+
+                LOG_INFO("swapchain depth and hdr handled window resize {}x{}", w, h);
                 std::lock_guard lock(display_mutex_);
                 current_settings_.width  = w;
                 current_settings_.height = h;
@@ -670,6 +812,10 @@ void graphics::impl::tick_frame_timing()
     frame_timer_.step();
     const float dt_ms = frame_timer_.delta_time_ms();
 
+    //~ raw seconds the graph hands these to passes the pacers eat dt to throttle
+    last_dt_seconds_  = dt_ms * 0.001f;
+    elapsed_seconds_ += static_cast<double>(last_dt_seconds_);
+
     frame_ms_avg_ = (frame_ms_avg_ <= 0.f)
         ? dt_ms
         : frame_ms_avg_ * 0.9f + dt_ms * 0.1f;
@@ -693,10 +839,35 @@ void graphics::impl::rebuild_hardware()
     if (not device_.recreate()) //~ reuses the last good config
         LOG_ERROR("device recreate failed");
     init_dependents();
+
+    //~ all the gpu resources came back fresh so drop the graphs stale tracking
+    graph_.invalidate();
+
+    //~ timelines reset too so old per slot fence values are meaningless zero
+    //~ them or a slot waits on a value the new fence may never reach and hangs
+    for (auto& qv : frame_.queue_values) qv = {};
+    frame_.index = 0u;
 }
 
-void graphics::impl::deinit_dependents() const
+void graphics::impl::wait_for_gpu_idle()
 {
+    //~ park the cpu until each queue has chewed through everything it was given
+    //~ signal returns zero when the queue is gone or a rebuild is pending and a
+    //~ wait on zero returns straight away so this is safe on a dead device too
+    if (graphics_timeline_.queue())
+        (void)graphics_timeline_.cpu_wait(graphics_timeline_.signal());
+    if (compute_timeline_.queue())
+        (void)compute_timeline_.cpu_wait(compute_timeline_.signal());
+    if (copy_timeline_.queue())
+        (void)copy_timeline_.cpu_wait(copy_timeline_.signal());
+}
+
+void graphics::impl::deinit_dependents()
+{
+    //~ the gpu might still be reading depth the backbuffer whatever so drain it
+    //~ before we delete anything or it crashes with OBJECT_DELETED_WHILE_IN_USE
+    wait_for_gpu_idle();
+
     // from leaf to parent node
     for (auto it = hardware_handler_.rbegin(); it != hardware_handler_.rend(); ++it)
     {
@@ -829,6 +1000,13 @@ void graphics::impl::apply_display_settings(const display_settings& settings)
             LOG_ERROR("gpu switch failed staying where we can");
         }
         init_dependents();
+
+        //~ new adapter means every resource pointer is stale wipe graph tracking
+        graph_.invalidate();
+
+        //~ fresh timelines so the old per slot fence values would hang a wait
+        for (auto& qv : frame_.queue_values) qv = {};
+        frame_.index = 0u;
     }
 
     //~ its up a gpu switch above already rebuilt anyways

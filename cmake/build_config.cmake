@@ -25,7 +25,10 @@ option(COTS_USE_TRACY "Enable Tracy profiler integration" ON)
 option(COTS_TEXTURES_USE_BAKED_IN_DEBUG
         "Force the baked texture path even in Debug builds" ON)
 
-option(COTS_GPU_VALIDATION "Enable D3D12 GPU-based validation in debug builds" ON)
+#~ gpu based validation is opt in its brutally slow minutes to first frame and
+#~ spams the startup banner on every device create flip it on only when chasing
+#~ a descriptor or resource bug
+option(COTS_GPU_VALIDATION "Enable D3D12 GPU-based validation in debug builds" OFF)
 
 set(COTS_PROFILER_LEVEL "0" CACHE STRING
         "Profiler verbosity: 0=off, 1=coarse, 2=medium, 3=verbose")

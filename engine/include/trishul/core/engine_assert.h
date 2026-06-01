@@ -14,6 +14,7 @@
 #include <chrono>
 #include <format>
 #include <fstream>
+#include <initializer_list>
 #include <print>
 #include <string>
 #include <utility>
@@ -32,7 +33,8 @@
 
 namespace trishul
 {
-    inline void init_debug_runtime(const bool enable_leak_check = true)
+    inline void init_debug_runtime(const bool enable_leak_check = true,
+                                   const std::initializer_list<long> break_allocs = {})
     {
     #if ENGINE_HAS_CRTDBG
         _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_DEBUG | _CRTDBG_MODE_WNDW);
@@ -46,11 +48,14 @@ namespace trishul
             int flags = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
             flags |= _CRTDBG_ALLOC_MEM_DF;     // track allocations
             flags |= _CRTDBG_LEAK_CHECK_DF;    // dump leaks at exit
-            flags |= _CRTDBG_CHECK_ALWAYS_DF;  // heap check on every alloc
             _CrtSetDbgFlag(flags);
         }
+
+        //~ arm the requested break points last so they survive the flag set
+        for (const long id : break_allocs) (void)_CrtSetBreakAlloc(id);
     #else
         (void)enable_leak_check;
+        (void)break_allocs;
     #endif
     }
 } // namespace trishul

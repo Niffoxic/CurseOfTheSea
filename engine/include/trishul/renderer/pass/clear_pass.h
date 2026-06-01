@@ -12,6 +12,7 @@
 #define CURSEOFTHESEA_CLEAR_PASS_H
 
 #include "pass.h"
+#include "trishul/renderer/clear_color.h"
 
 namespace trishul::render::passes
 {
@@ -19,6 +20,10 @@ namespace trishul::render::passes
     class clear_pass final : public pass
     {
     public:
+        //~ reversed z so the far plane is zero clear depth to that
+        static constexpr float        k_clear_depth   { 0.0f };
+        static constexpr std::uint8_t k_clear_stencil { 0u };
+
         clear_pass(graph::resource_handle color,
                    graph::resource_handle depth) noexcept;
 
