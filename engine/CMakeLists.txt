@@ -31,6 +31,7 @@ add_library(trishul_engine SHARED
         src/renderer/textures/texture_baker.cpp
         src/renderer/textures/texture_cache.cpp
         src/renderer/utils/image_decode.cpp
+        src/renderer/graph/resource_registry.cpp
 )
 
 cots_apply_compile_flags(trishul_engine)
